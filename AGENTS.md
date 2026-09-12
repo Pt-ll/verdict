@@ -50,3 +50,13 @@ pnpm package        # 打包 VSIX
 - TypeScript 5，`strict: true`；不写隐式 `any`。
 - 注释用中文，解释「为什么」而不是复述「做了什么」。
 - 不加版权头；不引入任何需要联网或上报的包。
+
+## 容易被当成「多余代码」删掉的必需逻辑
+
+- `engineFacade.ts` 的 `warmUp()`：macOS 上新写入的可执行文件首次执行要 400-900ms，
+  不预热会把刚编译好的正确程序误判成 TLE。删除前请先看 SPEC §9 的说明。
+- `sandbox/posix.ts` 里 `ulimit -v` 取 **2 倍** 内存上限：卡在等值上会让程序先 `malloc` 失败崩溃，
+  把 MLE 误判成 RE（SPEC §8.3）。
+- `compiler.ts` 里 `-Wl,--stack` **只在 Windows 加上**：POSIX 传这个参数会让链接直接失败（SPEC §11.10）。
+- 比较器全程按字节比较，不要改成先 `toString('utf8')` 再比：不同的非法字节会被统一成 U+FFFD，
+  导致本该判 WA 的输出被判成 AC。

@@ -114,6 +114,29 @@ describe('engineFacade：编译 -> 运行 -> 比较 的完整链路', () => {
     }
     expect(outcome.compile.diagnostics.some((d) => d.severity === 'error')).toBe(true);
   });
+
+  it('新编译的产物先预热一次，命中缓存则跳过', async () => {
+    if (!available) {
+      return;
+    }
+    // 换一份内容不同的源码，保证这一次是新编译而不是命中已有缓存。
+    const fresh = `// 预热用例\n${SUM_PROGRAM}`;
+
+    const first = await judge(fresh);
+    if (first.kind !== 'judged') {
+      throw new Error(`期望 judged，实际 ${first.kind}`);
+    }
+    expect(first.compile.cached).toBe(false);
+    expect(first.warmedUp).toBe(true);
+
+    const second = await judge(fresh);
+    if (second.kind !== 'judged') {
+      throw new Error(`期望 judged，实际 ${second.kind}`);
+    }
+    expect(second.compile.cached).toBe(true);
+    expect(second.warmedUp).toBe(false);
+    expect(second.cases[0].verdict).toBe('AC');
+  });
 });
 
 describe('engineFacade：找不到测试数据', () => {

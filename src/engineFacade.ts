@@ -45,9 +45,14 @@ export type JudgeOutcome =
       dataDir: string;
       elapsedMs: number;
       cancelled: boolean;
+      /** 是否在正式评测前做过预热（见 warmUp 的说明）。 */
+      warmedUp: boolean;
     };
 
 const sandbox = createSandbox();
+
+/** 预热的时限：只需要让内核完成首次校验，程序本身通常几毫秒就结束。 */
+const WARMUP_TIMEOUT_MS = 3000;
 
 let cachedToolchain: { key: string; toolchain: Toolchain | null } | null = null;
 
@@ -106,6 +111,8 @@ export async function judgeSourceFile(
     comparator: options.comparator,
   });
 
+  const warmedUp = await warmUp(compiled, options, token, report);
+
   const cases: CaseResult[] = [];
   let cancelled = false;
   for (const test of location.tests) {
@@ -156,7 +163,36 @@ export async function judgeSourceFile(
     dataDir: location.dataDir,
     elapsedMs: Date.now() - startedAt,
     cancelled,
+    warmedUp,
   };
+}
+
+/**
+ * 预热：新建的可执行文件在 macOS 上首次执行要 400-900ms（内核的代码校验），
+ * 之后只要几毫秒。若不预热，一个刚编译好的正确程序在 1 秒时限下会被误判 TLE——
+ * 这是「判定必须稳定可信」不能接受的。
+ *
+ * 因此新编译（非缓存命中）后先空跑一次，用空输入、独立时限，结果整体丢弃。
+ * 代价约 0.2 秒；副作用是被测程序多跑一次，OI 程序约定为 stdin 到 stdout 的纯函数，
+ * 因此可以接受。
+ */
+async function warmUp(
+  compiled: CompileResult,
+  options: EngineOptions,
+  token: CancellationTokenLike | undefined,
+  report: (stage: string) => void,
+): Promise<boolean> {
+  if (compiled.cached || compiled.runCmd.cmd.length === 0) {
+    return false;
+  }
+  report('预热');
+  await sandbox.run(
+    compiled.runCmd,
+    Buffer.alloc(0),
+    { ...options.limits, timeMs: WARMUP_TIMEOUT_MS },
+    token,
+  );
+  return true;
 }
 
 async function readFileOrNull(target: string): Promise<Buffer | null> {
