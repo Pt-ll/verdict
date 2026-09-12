@@ -27,6 +27,10 @@ Verdict：把 OI/ICPC 风格的本地评测系统做进 VSCode 的扩展。
 
 ## 常用命令
 
+工具链要求 Node ≥ 22.13：`package.json` 锁的 pnpm 11.26.0 内部用了 Node 22 才有的 `node:sqlite`，
+Node 20 会让 pnpm 一启动就崩（CI 曾因此三平台全红）。这与扩展运行时无关——VSCode 1.95 自带的
+Node 20 才是扩展真正运行的环境，所以 `engines.node` 仍写 `>=20`，`.nvmrc` 与 CI 则用 24。
+
 ```bash
 pnpm install        # 安装依赖（首次；pnpm 会读 pnpm-workspace.yaml 的 allowBuilds）
 pnpm build          # esbuild 打包到 dist/extension.js

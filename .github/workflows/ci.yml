@@ -18,9 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 这里的 Node 版本不是随便挑的 LTS：package.json 锁的 pnpm 11.26.0 自己要求 Node >= 22.13
+      # （它内部用了 Node 22 才有的 node:sqlite），配 Node 20 会让 pnpm 一启动就崩，
+      # 三个平台会在「安装依赖」这一步一起变红（2026-09-12 就这么红过一次）。
+      # 取 24 = 当前 LTS；本机装 25 也满足要求。
+      # 注意这与扩展运行时无关：VSCode 1.95 自带的 Node 20 才是扩展真正运行的环境。
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       # 不用 corepack enable：Node 25 起 corepack 已不再随发行版提供，
       # 而 setup-node 的 cache: pnpm 又要求 PATH 里先有 pnpm。
