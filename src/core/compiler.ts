@@ -1,8 +1,12 @@
-import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import {
+  DEFAULT_PROCESS_TIMEOUT_MS,
+  describeError,
+  runProcess,
+} from '../util/process';
 import { which } from '../util/which';
 
 /**
@@ -45,8 +49,6 @@ interface Candidate {
   /** 判定成功的版本行匹配；缺省表示「退出码为 0」即成功。 */
   match?: RegExp;
 }
-
-const DEFAULT_TIMEOUT_MS = 5000;
 
 const CANDIDATES: Candidate[] = [
   { kind: 'g++', command: 'g++', args: ['--version'] },
@@ -100,88 +102,11 @@ export async function detectToolchain(
   return all[0] ?? null;
 }
 
-export interface ProcessResult {
-  /** 进程退出码；被信号杀死或启动失败时为 null。 */
-  code: number | null;
-  stdout: string;
-  stderr: string;
-  /** 是否因超时被强制终止。 */
-  timedOut: boolean;
-  /** 启动失败（如 ENOENT）时的人类可读原因。 */
-  error?: string;
-}
-
-/**
- * 运行一个外部程序并收集输出。
- *
- * 这里刻意不抛异常：编译器不存在、超时、被杀，都通过返回值表达，
- * 由上层转换成 CompileResult / RunResult 的诊断信息。
- */
-export function runProcess(
-  command: string,
-  args: string[],
-  timeoutMs: number = DEFAULT_TIMEOUT_MS,
-): Promise<ProcessResult> {
-  return new Promise<ProcessResult>((resolve) => {
-    let settled = false;
-    let timer: NodeJS.Timeout | undefined;
-
-    const finish = (result: ProcessResult): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-      resolve(result);
-    };
-
-    let child;
-    try {
-      child = spawn(command, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
-    } catch (err) {
-      finish({ code: null, stdout: '', stderr: '', timedOut: false, error: describeError(err) });
-      return;
-    }
-
-    let stdout = '';
-    let stderr = '';
-
-    timer = setTimeout(() => {
-      child.kill();
-      finish({
-        code: null,
-        stdout,
-        stderr,
-        timedOut: true,
-        error: `执行超时（${timeoutMs}ms）`,
-      });
-    }, timeoutMs);
-
-    child.stdout?.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf8');
-    });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
-    });
-    child.on('error', (err) => {
-      finish({ code: null, stdout, stderr, timedOut: false, error: describeError(err) });
-    });
-    child.on('close', (code) => {
-      finish({ code, stdout, stderr, timedOut: false });
-    });
-  });
-}
-
 /** 运行一次 `<command> --version` 之类的探测，捕获输出而不抛异常。 */
 export async function probeCompiler(
   command: string,
   args: string[] = ['--version'],
-  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  timeoutMs: number = DEFAULT_PROCESS_TIMEOUT_MS,
 ): Promise<ProbeResult> {
   const result = await runProcess(command, args, timeoutMs);
   const firstLine =
@@ -264,13 +189,6 @@ function inferKind(
     return 'python';
   }
   return fallback;
-}
-
-function describeError(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return String(err);
 }
 
 // ---------------------------------------------------------------------------

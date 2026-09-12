@@ -660,11 +660,14 @@ SPJ / interactor 均依赖 `testlib.h`。扩展**不捆绑**、不联网下载�
 ### 8.3 内存限制
 
 - **尽力而为**（无原生模块）：
-  - Linux：`sh -c 'ulimit -v <kb>; exec "$0" "$@"'` 施加虚拟内存上限；同时 25ms 轮询 `/proc/<pid>/status` 的 `VmRSS`。
+  - Linux：25ms 轮询 `/proc/<pid>/status` 的 `VmRSS` 作为**限额判据**；同时用 `sh -c 'ulimit -v <2×kb>; exec "$0" "$@"'`
+    加一层**兜底**。兜底刻意取 2 倍而非等于限额：虚拟内存 ≥ 常驻内存，若把 `ulimit -v` 卡在限额上，
+    程序会在采样发现超限之前就先 `malloc` 失败并崩溃，把 MLE 误判成 RE。
   - macOS：`ulimit -v` 在部分版本不生效，仅轮询 `ps -o rss= -p <pid>`；超限杀树。
   - Windows：`tasklist /FI "PID eq <pid>" /FO CSV /NH` 解析工作集；超限杀树。
 - 取采样最大值作为 `peakMemKb`；一旦超过 `memoryMb` 判 `MLE` 并杀树。
 - **限制是"采样 + 超限杀"**，存在采样间隔内的短暂超标；不提供硬性上限（见 §11）。
+- CPU 时间兜底：POSIX 下用 `ulimit -t` 施加 CPU 秒数上限；被内核以 `SIGXCPU` 杀死时判 TLE。
 
 ### 8.4 栈限制
 
@@ -719,11 +722,15 @@ exitCode != 0          -> RE
 ## 11. 已知限制
 
 1. 内存限制为采样式，非硬上限（§8.3）。
-2. 交互题暂时只确保 C++；SPJ / interactor 基于 testlib，需自备或指定 `testlib.h`（§6.6）。
-3. 实数比较按 token 数值比较，不支持自定义解析（可改用 spj）。
-4. 本版不支持提交答案题（output-only）与通信题（communication），见 §19。
-5. 多线程评测为实验特性，可能影响计时稳定性。
-6. 需要用户自备编译器；MSVC 依赖 VS 开发环境定位，可能失败后回退。
+2. macOS 的内存采样依赖外部命令 `ps`。若运行环境禁止执行 `ps`（某些受安全策略约束的沙箱），
+   采样恒为失败，内存超限将无法判定，程序会一直跑到时限为止并判 TLE。
+3. 交互题暂时只确保 C++；SPJ / interactor 基于 testlib，需自备或指定 `testlib.h`（§6.6）。
+4. 实数比较按 token 数值比较，不支持自定义解析（可改用 spj）。
+5. 本版不支持提交答案题（output-only）与通信题（communication），见 §19。
+6. 多线程评测为实验特性，可能影响计时稳定性。
+7. 需要用户自备编译器；MSVC 依赖 VS 开发环境定位，可能失败后回退。
+8. `cpuMs` 恒为 `null`：用 `/usr/bin/time` 包装会把被测程序变成孙子进程，破坏 RSS 采样的目标 pid；
+   跨平台可靠的口径是 `wallMs`（§8.2）。
 
 ---
 

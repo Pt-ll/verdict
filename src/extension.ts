@@ -5,9 +5,9 @@ import * as vscode from 'vscode';
 import {
   compile,
   detectAllToolchains,
-  runProcess,
   type Toolchain,
 } from './core/compiler';
+import { runProcess } from './util/process';
 
 /**
  * 扩展入口（M1）。

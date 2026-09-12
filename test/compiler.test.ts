@@ -7,10 +7,10 @@ import {
   compile,
   detectToolchain,
   parseCompileOutput,
-  runProcess,
   type CompilerKind,
   type Toolchain,
 } from '../src/core/compiler';
+import { runProcess } from '../src/util/process';
 
 function fakeToolchain(kind: CompilerKind): Toolchain {
   return { kind, command: kind, path: null, version: 'test-version' };
