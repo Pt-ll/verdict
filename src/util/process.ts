@@ -28,6 +28,9 @@ export function runProcess(
 ): Promise<ProcessResult> {
   return new Promise<ProcessResult>((resolve) => {
     let settled = false;
+    // 必须是 let：finish 在赋值之前就定义好了，而 spawn 同步失败时会立刻调用 finish，
+    // 若改成 const 会落在暂时性死区（TDZ），反而在启动失败时抛异常。
+    // eslint-disable-next-line prefer-const
     let timer: NodeJS.Timeout | undefined;
 
     const finish = (result: ProcessResult): void => {

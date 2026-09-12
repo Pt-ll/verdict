@@ -32,11 +32,21 @@ pnpm install        # 安装依赖（首次；pnpm 会读 pnpm-workspace.yaml �
 pnpm build          # esbuild 打包到 dist/extension.js
 pnpm watch          # 增量编译（F5 调试时用）
 pnpm typecheck      # tsc --noEmit
-pnpm test           # vitest（M1 第 2 步起可用）
+pnpm lint           # eslint（配置只有 eslint.config.mjs 一个文件）
+pnpm test           # vitest 单测：纯 Node，不起 VSCode
+pnpm test:integration  # 真实扩展宿主里跑 test/integration/index.js
 pnpm package        # 打包 VSIX
 ```
 
 调试：在 VSCode 中打开本目录，按 `F5` 启动扩展开发宿主。
+
+## 集成测试
+
+- `test/runTest.js`：入口。先 esbuild 打包，再拉起真实扩展宿主。扩展宿主优先用本机已装的
+  VSCode（开发机常常离线），CI 上回落到 `@vscode/test-electron` 下载。
+- `test/integration/index.js`：断言命令注册、六种判定（AC/WA/TLE/RE/OLE/CE）与编译失败诊断。
+- `testdata/itest/`：样例程序与它自己的 `.vscode/settings.json`（时限 1000ms、内存 256MB、输出 64KB）。
+  改样例时要同步改 `test/integration/index.js` 里的期望表。
 
 ## 里程碑（见 SPEC §12）
 
@@ -60,3 +70,5 @@ pnpm package        # 打包 VSIX
 - `compiler.ts` 里 `-Wl,--stack` **只在 Windows 加上**：POSIX 传这个参数会让链接直接失败（SPEC §11.10）。
 - 比较器全程按字节比较，不要改成先 `toString('utf8')` 再比：不同的非法字节会被统一成 U+FFFD，
   导致本该判 WA 的输出被判成 AC。
+- `src/extension.ts` 里 `activate()` 的返回值 `{ judgeDocument }`：集成测试只靠它拿到结构化判定，
+  「命令面板点一下」是没法断言的。删掉它，`test/integration` 整片失效。

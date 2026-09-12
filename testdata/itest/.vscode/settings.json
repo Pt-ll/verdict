@@ -1,0 +1,5 @@
+{
+  "verdict.defaultTimeMs": 1000,
+  "verdict.defaultMemoryMb": 256,
+  "verdict.outputLimitKb": 64
+}

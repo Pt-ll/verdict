@@ -34,13 +34,27 @@ export interface CommandDeps {
   diagnostics: DiagnosticsPublisher;
 }
 
-export function registerCommands(deps: CommandDeps): vscode.Disposable[] {
+export interface VerdictCommands {
+  disposables: vscode.Disposable[];
+  /**
+   * 评测一个已打开的文档并返回结构化结果；没有真正评测时返回 null。
+   *
+   * 命令面板与集成测试走同一条链路：面板忽略返回值，测试用它断言 AC/WA/TLE/RE/OLE/CE。
+   * 因此这条链路上的弹窗一律不 await（见 reportOutcome 的说明），否则测试会挂到超时。
+   */
+  judgeDocument(document: vscode.TextDocument): Promise<JudgeOutcome | null>;
+}
+
+export function registerCommands(deps: CommandDeps): VerdictCommands {
   const run = new JudgeRunner(deps);
-  return [
-    vscode.commands.registerCommand(COMMAND_CHECK_ENV, () => run.checkEnv()),
-    vscode.commands.registerCommand(COMMAND_JUDGE_CURRENT, () => run.judgeCurrent()),
-    vscode.commands.registerCommand(COMMAND_CANCEL, () => run.cancel()),
-  ];
+  return {
+    disposables: [
+      vscode.commands.registerCommand(COMMAND_CHECK_ENV, () => run.checkEnv()),
+      vscode.commands.registerCommand(COMMAND_JUDGE_CURRENT, () => run.judgeCurrent()),
+      vscode.commands.registerCommand(COMMAND_CANCEL, () => run.cancel()),
+    ],
+    judgeDocument: (document) => run.judgeDocument(document),
+  };
 }
 
 class JudgeRunner {
@@ -130,19 +144,29 @@ class JudgeRunner {
   }
 
   async judgeCurrent(): Promise<void> {
-    const { output, status, diagnostics } = this.deps;
-
     const document = vscode.window.activeTextEditor?.document;
-    if (document === undefined || document.uri.scheme !== 'file') {
+    if (document === undefined) {
       await vscode.window.showWarningMessage(
         'Verdict：请先打开一个已保存到磁盘的源码文件。',
       );
       return;
     }
+    await this.judgeDocument(document);
+  }
+
+  async judgeDocument(document: vscode.TextDocument): Promise<JudgeOutcome | null> {
+    const { output, status, diagnostics } = this.deps;
+
+    if (document.uri.scheme !== 'file') {
+      await vscode.window.showWarningMessage(
+        'Verdict：请先打开一个已保存到磁盘的源码文件。',
+      );
+      return null;
+    }
 
     if (this.activeCancellation !== undefined) {
       await vscode.window.showWarningMessage('Verdict：已有评测在进行中，可先执行「Verdict: 取消当前任务」。');
-      return;
+      return null;
     }
 
     // 评测的是磁盘上的内容：不保存就等于编译上一版，结论会骗人。
@@ -150,7 +174,7 @@ class JudgeRunner {
       const saved = await document.save();
       if (!saved) {
         await vscode.window.showWarningMessage('Verdict：文件保存失败，已取消评测。');
-        return;
+        return null;
       }
     }
 
@@ -183,11 +207,14 @@ class JudgeRunner {
       );
 
       await this.reportOutcome(outcome, sourcePath);
+      return outcome;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       output.error(`评测过程中出错：${message}`);
       status.setWarning('Verdict：评测失败');
-      await vscode.window.showErrorMessage(`Verdict：评测失败 - ${message}`);
+      // 同样不 await，否则 finally 不执行，评测锁会一直握着。
+      void vscode.window.showErrorMessage(`Verdict：评测失败 - ${message}`);
+      return null;
     } finally {
       cancellation.dispose();
       this.activeCancellation = undefined;
@@ -203,7 +230,9 @@ class JudgeRunner {
         status.setWarning('Verdict：未找到测试数据');
         output.info('未找到测试数据。');
         output.info(`预期位置：与源文件同名的 ${base}.in 与 ${base}.out，或同级 tests/ 目录下的 1.in / 1.out。`);
-        await vscode.window.showWarningMessage(
+        // 故意不 await：通知的 Promise 只在用户交互或手动关闭时才 resolve，
+        // 若在这里等，评测锁要等到用户点掉弹窗才释放，下一次评测会被误判成「正在评测中」。
+        void vscode.window.showWarningMessage(
           `Verdict：未找到测试数据。请放置 ${base}.in 与 ${base}.out 后再试。`,
         );
         return;
@@ -212,7 +241,7 @@ class JudgeRunner {
       case 'no-compiler': {
         status.setWarning(outcome.message);
         output.error(outcome.message);
-        await vscode.window.showErrorMessage(`Verdict：${outcome.message}`);
+        void vscode.window.showErrorMessage(`Verdict：${outcome.message}`);
         return;
       }
 
@@ -223,14 +252,16 @@ class JudgeRunner {
         }
         const errorCount = outcome.compile.diagnostics.filter((d) => d.severity === 'error').length;
         status.setWarning('Verdict：编译失败');
-        await vscode.window.showErrorMessage(
-          `Verdict：编译失败（${errorCount} 个错误），详见问题面板。`,
-          '查看输出',
-        ).then((choice) => {
-          if (choice === '查看输出') {
-            output.show();
-          }
-        });
+        void vscode.window
+          .showErrorMessage(
+            `Verdict：编译失败（${errorCount} 个错误），详见问题面板。`,
+            '查看输出',
+          )
+          .then((choice) => {
+            if (choice === '查看输出') {
+              output.show();
+            }
+          });
         return;
       }
 
@@ -255,7 +286,7 @@ class JudgeRunner {
 
         if (!outcome.cancelled) {
           const summary = `Verdict：${worst} ${accepted}/${total}，用时 ${outcome.elapsedMs}ms。`;
-          await vscode.window.showInformationMessage(summary, '查看输出').then((choice) => {
+          void vscode.window.showInformationMessage(summary, '查看输出').then((choice) => {
             if (choice === '查看输出') {
               output.show();
             }
