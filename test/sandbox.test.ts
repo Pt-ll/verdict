@@ -56,6 +56,27 @@ const ECHO_SUM = [
   '',
 ].join('\n');
 
+// 与 ECHO_SUM 输出相同，但算完之后空转到 200ms 才退出。
+//
+// 内存是 25ms 轮询采样的（SPEC §8.3），一个几毫秒就跑完的程序可能一次都采不到：
+// 首次执行新写的二进制时，进程大部分时间耗在内核校验里，那期间 ps 读出来的 RSS 是 0。
+// 于是 peakMemKb 合法地等于 0，而断言要求 > 0——这条用例在 macOS CI 上就是这么红的。
+// 让程序多活一会儿，断言测的才是「采样能不能拿到数」，而不是「机器够不够快」。
+const ECHO_SUM_ALIVE = [
+  '#include <cstdio>',
+  '#include <chrono>',
+  'int main() {',
+  '  int a = 0, b = 0;',
+  '  if (std::scanf("%d %d", &a, &b) != 2) return 1;',
+  '  std::printf("%d\\n", a + b);',
+  '  const auto deadline =',
+  '      std::chrono::steady_clock::now() + std::chrono::milliseconds(200);',
+  '  while (std::chrono::steady_clock::now() < deadline) {}',
+  '  return 0;',
+  '}',
+  '',
+].join('\n');
+
 const ABORT_PROGRAM = '#include <cstdlib>\nint main() { std::abort(); }\n';
 
 const MEMORY_HOG = [
@@ -89,7 +110,7 @@ describe('sandbox：正常执行', () => {
   it(
     '读 stdin、写 stdout，判 OK 并给出耗时与内存',
     async () => {
-      const run = await build('ok', ECHO_SUM);
+      const run = await build('ok-alive', ECHO_SUM_ALIVE);
       if (!run) {
         return;
       }
