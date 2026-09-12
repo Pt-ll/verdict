@@ -30,6 +30,14 @@
       {
         "command": "verdict.checkEnv",
         "title": "Verdict: 检查环境"
+      },
+      {
+        "command": "verdict.judgeCurrent",
+        "title": "Verdict: 评测当前文件"
+      },
+      {
+        "command": "verdict.cancel",
+        "title": "Verdict: 取消当前任务"
       }
     ],
     "configuration": {
@@ -55,6 +63,41 @@
           "type": "boolean",
           "default": false,
           "description": "在输出通道中打印调试日志。"
+        },
+        "verdict.defaultTimeMs": {
+          "type": "number",
+          "default": 1000,
+          "description": "默认时间限制（毫秒）。"
+        },
+        "verdict.defaultMemoryMb": {
+          "type": "number",
+          "default": 256,
+          "description": "默认内存限制（MB），同时作为栈上限。"
+        },
+        "verdict.outputLimitKb": {
+          "type": "number",
+          "default": 4096,
+          "description": "输出上限（KB），超过判 OLE。"
+        },
+        "verdict.comparator": {
+          "type": "string",
+          "enum": [
+            "default",
+            "line",
+            "real"
+          ],
+          "default": "default",
+          "markdownDescription": "评测当前文件时使用的比较方式。M2 引入题目包后由 `problem.json` 覆盖。"
+        },
+        "verdict.realAbsEps": {
+          "type": "number",
+          "default": 0.000001,
+          "description": "real 比较的绝对误差。"
+        },
+        "verdict.realRelEps": {
+          "type": "number",
+          "default": 0.000001,
+          "description": "real 比较的相对误差。"
         }
       }
     }

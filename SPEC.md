@@ -365,7 +365,7 @@ export interface ComparatorInput {
 }
 
 export interface CompareResult {
-  verdict: 'AC' | 'WA' | 'PC';
+  verdict: 'AC' | 'WA' | 'PC' | 'UKE';  // UKE：该比较方式尚未实现，如实上报而不是假装判过
   scoreRatio: number;        // 0..1，spj 可给部分分
   detail: string;
   firstDiffLine?: number;    // 逐行模式
@@ -399,6 +399,9 @@ export interface CaseResult {
   exitCode: number | null;
   signal: string | null;
   message?: string;
+  output: Buffer;            // 实际输出，供 diff / 报告使用
+  answer: Buffer;            // 标准答案
+  firstDiffLine?: number;    // line 模式下的首个不同行
 }
 
 export interface SubtaskResult {
@@ -510,6 +513,17 @@ export function importProblemPackage(src: string): Promise<ProblemPackage>;
 
 - `scanTests` 自动识别 `1.in/1.out`、`test1.in/test1.out`、`sample*`、`*.ans` 等命名约定，并保持稳定顺序。
 - 所有写操作仅限 `.verdict/` 与题目数据目录，绝不改动选手源码。
+
+#### 5.8.1 M1 的过渡：`findTestsBesideSource`
+
+题目包（`problem.json`）在 M2 才落地，但 M1 的验收要求「编辑器里评测当前文件」就能用，
+因此先提供一个纯约定式的查找函数，按以下顺序定位测试数据：
+
+1. 与源文件同名的一对：`solve.cpp` → `solve.in` + `solve.out` / `.ans` / `.expected`；
+2. 同级 `tests/` 或 `test/` 目录，交给 `scanTests`；
+3. 源文件所在目录，交给 `scanTests`。
+
+都没有时返回 `null`，UI 给出可操作的提示。M2 引入题目包后，这里退化为「没有 `problem.json` 时的兜底」。
 
 ### 5.9 Report（导出）
 
@@ -636,6 +650,12 @@ SPJ / interactor 均依赖 `testlib.h`。扩展**不捆绑**、不联网下载�
 | `verdict.autoJudgeOnSave` | false | 保存即评测当前题 |
 | `verdict.reportDir` | `.verdict-out` | 导出目录 |
 | `verdict.debug` | false | debug 日志 |
+| `verdict.defaultTimeMs` | 1000 | 评测当前文件时的时间限制 |
+| `verdict.defaultMemoryMb` | 256 | 评测当前文件时的内存限制，同时作为栈上限 |
+| `verdict.outputLimitKb` | 4096 | 评测当前文件时的输出上限 |
+| `verdict.comparator` | `default` | 评测当前文件时的比较方式（`default` / `line` / `real`）；M2 起由 `problem.json` 覆盖 |
+| `verdict.realAbsEps` | 1e-6 | `real` 比较的绝对误差 |
+| `verdict.realRelEps` | 1e-6 | `real` 比较的相对误差 |
 
 工作区文件优先于用户设置；两者都不存在时使用内置默认值。
 
@@ -731,6 +751,10 @@ exitCode != 0          -> RE
 7. 需要用户自备编译器；MSVC 依赖 VS 开发环境定位，可能失败后回退。
 8. `cpuMs` 恒为 `null`：用 `/usr/bin/time` 包装会把被测程序变成孙子进程，破坏 RSS 采样的目标 pid；
    跨平台可靠的口径是 `wallMs`（§8.2）。
+9. macOS 上 `abort()` 之类的崩溃要等系统写完崩溃报告，实测约 260ms 才真正退出；
+   机器繁忙时更久。给 RE 的用例设置接近默认的时限时，可能先撞上超时而被判成 TLE。
+10. 栈上限只在 Windows 编译期施加（MinGW `-Wl,--stack` / MSVC `/STACK:`）；POSIX 一律用运行时
+    `ulimit -s`。在 macOS/Linux 上传 `-Wl,--stack` 会让链接器直接报错，表现为整次编译 CE。
 
 ---
 
