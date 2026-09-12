@@ -173,7 +173,9 @@ describe('compile', () => {
     const result = await compile(fakeToolchain('python'), '/w/solve.py');
     expect(result.ok).toBe(true);
     expect(result.exe).toBe('');
-    expect(result.runCmd).toEqual({ cmd: 'python', args: ['/w/solve.py'] });
+    // 期望值也要过一遍 path.resolve：Windows 上 '/w/solve.py' 是「当前盘根目录下的 w」，
+    // 会被解析成 D:\w\solve.py，写死字面量只有 POSIX 能过。
+    expect(result.runCmd).toEqual({ cmd: 'python', args: [path.resolve('/w/solve.py')] });
   });
 
   it('源文件不存在时返回诊断而不是抛异常', async () => {

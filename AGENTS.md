@@ -37,12 +37,15 @@ pnpm build          # esbuild 打包到 dist/extension.js
 pnpm watch          # 增量编译（F5 调试时用）
 pnpm typecheck      # tsc --noEmit
 pnpm lint           # eslint（配置只有 eslint.config.mjs 一个文件）
-pnpm test           # vitest 单测：纯 Node，不起 VSCode
+pnpm test           # vitest 单测：纯 Node，不起 VSCode（单测超时 30s，见下）
 pnpm test:integration  # 真实扩展宿主里跑 test/integration/index.js
 pnpm package        # 打包 VSIX
 ```
 
 调试：在 VSCode 中打开本目录，按 `F5` 启动扩展开发宿主。
+
+单测超时统一给到 30s（`--testTimeout=30000`）：默认的 5s 对「真的调编译器」的用例不够，
+Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2026-09-12 因此红过一次）。
 
 ## 集成测试
 

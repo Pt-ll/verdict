@@ -19,8 +19,8 @@
     "build": "node esbuild.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --testTimeout=30000",
+    "test:watch": "vitest --testTimeout=30000",
     "test:integration": "node ./test/runTest.js",
     "package": "vsce package",
     "vscode:prepublish": "node esbuild.js --production"
