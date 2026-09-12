@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      # 一个平台挂了也要看到另外两个的结果，否则跨平台问题会被掩盖。
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 不用 corepack enable：Node 25 起 corepack 已不再随发行版提供，
+      # 而 setup-node 的 cache: pnpm 又要求 PATH 里先有 pnpm。
+      # 版本必须与 package.json 的 packageManager 一致，否则 pnpm 会想去下载另一个版本（见 AGENTS.md）。
+      - name: 安装 pnpm
+        run: npm install -g pnpm@11.26.0
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # 先备好编译器，这样单元测试里的真实编译用例也会跑起来，而不是静默跳过。
+      - name: 安装 g++ 与虚拟显示（Linux）
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ xvfb
+
+      - name: 准备 MSVC 环境（Windows）
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      - name: 代码风格
+        run: pnpm lint
+
+      - name: 单元测试
+        run: pnpm test
+
+      # 集成测试会真的编译并运行样例程序：macOS 用 clang++，Linux 用 g++，Windows 用 cl。
+      # Linux 上没有显示器，扩展宿主必须跑在 Xvfb 里。
+      # 样例程序与它们的工作区设置都在 testdata/itest，dist/ 由 test/runTest.js 自己打包。
+      - name: 集成测试（Linux）
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test:integration
+
+      - name: 集成测试（macOS / Windows）
+        if: runner.os != 'Linux'
+        run: pnpm test:integration
