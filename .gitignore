@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+dist/
+out/
+.vscode-test/
+.verdict-out/
+*.exe
+*.vsix
+*.log
+.DS_Store

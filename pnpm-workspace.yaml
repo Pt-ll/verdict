@@ -1,0 +1,4 @@
+# pnpm 10+ 把包管理器设置从 package.json 移到了这里。
+# esbuild 安装时需要执行构建脚本以链接平台原生二进制，因此必须显式放行。
+allowBuilds:
+  esbuild: true
