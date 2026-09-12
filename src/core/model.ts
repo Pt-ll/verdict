@@ -34,6 +34,31 @@ export const DEFAULT_LIMITS: Limits = {
 /** 单次进程执行的结果分类，见 SPEC §5.3 / §8.5。 */
 export type RunVerdict = 'OK' | 'TLE' | 'MLE' | 'OLE' | 'RE' | 'INTERNAL';
 
+export type ComparatorMode = 'default' | 'line' | 'real' | 'spj' | 'interactive';
+
+export interface TestCase {
+  id: string;
+  /** 相对数据目录的输入文件名，例如 "1.in"。 */
+  input: string;
+  /** 相对数据目录的答案文件名，例如 "1.out"。 */
+  answer: string;
+  points?: number;
+  subtask?: string;
+}
+
+/** 比较方式配置，见 SPEC §6.4 的几种写法。 */
+export interface ComparatorConfig {
+  mode: ComparatorMode;
+  /** real 模式的绝对误差。 */
+  absEps?: number;
+  /** real 模式的相对误差。 */
+  relEps?: number;
+  /** spj 源码或可执行文件路径。 */
+  spj?: string;
+  /** 交互题交互器。 */
+  interactor?: string;
+}
+
 /**
  * 与 vscode.CancellationToken 结构兼容的最小接口。
  *

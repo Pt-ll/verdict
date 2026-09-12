@@ -126,6 +126,19 @@ describe('buildCompileArgs', () => {
     expect(args).toContain('-Wl,--stack,8388608');
   });
 
+  it('非 Windows 平台不带任何栈参数（POSIX 靠运行时 ulimit -s）', () => {
+    for (const platform of ['darwin', 'linux'] as NodeJS.Platform[]) {
+      const args = buildCompileArgs(
+        fakeToolchain('clang++'),
+        '/w/a.cpp',
+        '/w/a.out',
+        { flags: [], stackBytes: 8_388_608 },
+        platform,
+      );
+      expect(args.some((arg) => arg.includes('--stack') || arg.startsWith('/STACK'))).toBe(false);
+    }
+  });
+
   it('MSVC 使用 / 开头参数与 /Fe:', () => {
     const args = buildCompileArgs(
       fakeToolchain('cl'),

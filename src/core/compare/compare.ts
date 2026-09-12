@@ -1,0 +1,56 @@
+import type { ComparatorConfig } from '../model';
+import { compareLines } from './default';
+import { compareReal } from './real';
+
+export interface ComparatorInput {
+  input: Buffer;
+  output: Buffer;
+  answer: Buffer;
+}
+
+export interface CompareResult {
+  /**
+   * SPEC 只定义了 AC / WA / PC；这里额外允许 UKE，
+   * 用于「该比较方式尚未实现」这种必须如实上报、又不能假装判对的情况。
+   */
+  verdict: 'AC' | 'WA' | 'PC' | 'UKE';
+  /** 0..1，spj 可给部分分；AC 为 1，WA 为 0。 */
+  scoreRatio: number;
+  detail: string;
+  /** 逐行模式下首个不同行（1 起）；其余模式为 undefined。 */
+  firstDiffLine?: number;
+}
+
+export interface Comparator {
+  readonly config: ComparatorConfig;
+  compare(input: ComparatorInput): Promise<CompareResult>;
+}
+
+/**
+ * 按配置创建比较器。
+ *
+ * spj / interactive 属于 M4，这里返回明确的 UKE 而不是抛异常，
+ * 也不能悄悄退化成 default 比较——那会把「没判」伪装成「判过了」。
+ */
+export function createComparator(config: ComparatorConfig): Comparator {
+  switch (config.mode) {
+    case 'default':
+    case 'line':
+      return {
+        config,
+        compare: async (input) =>
+          compareLines(input, { reportFirstDiffLine: config.mode === 'line' }),
+      };
+    case 'real':
+      return { config, compare: async (input) => compareReal(input, config) };
+    default:
+      return {
+        config,
+        compare: async () => ({
+          verdict: 'UKE',
+          scoreRatio: 0,
+          detail: `比较方式 ${config.mode} 尚未实现（计划在 M4 落地）`,
+        }),
+      };
+  }
+}

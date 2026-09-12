@@ -375,10 +375,11 @@ export function buildCompileArgs(
     args.push(isMsvc ? `/I${dir}` : `-I${dir}`);
   }
 
-  if (opts.stackBytes !== undefined) {
-    args.push(
-      isMsvc ? `/STACK:${opts.stackBytes}` : `-Wl,--stack,${opts.stackBytes}`,
-    );
+  // 栈上限只有 Windows 需要在编译期处理：MinGW 用 -Wl,--stack，MSVC 用 /STACK。
+  // POSIX 由运行时 ulimit -s 施加（SPEC §8.4）；在 macOS/Linux 上传 -Wl,--stack
+  // 会让链接器直接报错，整次编译变成 CE。
+  if (opts.stackBytes !== undefined && platform === 'win32') {
+    args.push(isMsvc ? `/STACK:${opts.stackBytes}` : `-Wl,--stack,${opts.stackBytes}`);
   }
 
   if (isMsvc) {
