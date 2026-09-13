@@ -35,11 +35,27 @@ function findLocalVSCode() {
   if (process.env.VSCODE_EXECUTABLE) {
     return process.env.VSCODE_EXECUTABLE;
   }
+  // macOS 上那个二进制在 VS Code 1.10x 前后改过名：老版本叫 Electron，现在叫 Code。
+  // 只认老名字的话，本机明明装了也会被当成没装，转而去下载 300MB（2026-09-13 撞到过：
+  // 本机是 1.137，二进制已是 Code，集成测试因此卡在下载上）。
+  const macApp = (name) =>
+    [
+      path.join('/Applications', name),
+      path.join(os.homedir(), 'Applications', name),
+    ].flatMap((app) => [
+      path.join(app, 'Contents', 'MacOS', 'Code'),
+      path.join(app, 'Contents', 'MacOS', 'Electron'),
+    ]);
   const candidates =
     {
-      darwin: ['/Applications/Visual Studio Code.app/Contents/MacOS/Electron'],
+      darwin: [
+        ...macApp('Visual Studio Code.app'),
+        ...macApp('VSCodium.app'),
+        ...macApp('Visual Studio Code - Insiders.app'),
+      ],
       win32: [
         path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Microsoft VS Code', 'Code.exe'),
+        path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'VSCodium', 'VSCodium.exe'),
       ],
       linux: ['/usr/bin/code', '/usr/share/code/code', '/snap/bin/code'],
     }[process.platform] ?? [];

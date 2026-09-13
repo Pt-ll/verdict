@@ -42,7 +42,7 @@
 | 从哪里装 | 怎么做 |
 | --- | --- |
 | VSCodium / Gitpod / Theia 等 Open VSX 源 | 扩展面板里搜 `Verdict` |
-| 任何编辑器（手动） | 从 [Open VSX 页面](https://open-vsx.org/extension/YuChenZhong/verdict) 下 VSIX，再 `code --install-extension <文件>` |
+| 任何编辑器（手动） | 从 [Open VSX 页面](https://open-vsx.org/extension/YuChenZhong/verdict-judge) 下 VSIX，再 `code --install-extension <文件>` |
 | 本仓库的开发版 | `pnpm package` 之后装 `dist/verdict-<版本>.vsix` |
 
 Open VSX 上现为 0.0.1；**VS Code 官方市场还没发布**（卡在微软 Azure DevOps 的鉴权上，
@@ -51,8 +51,8 @@ Open VSX 上现为 0.0.1；**VS Code 官方市场还没发布**（卡在微软 A
 本仓库内打包与安装：
 
 ```bash
-pnpm package                                                    # 生成 dist/verdict-0.1.1.vsix
-code --install-extension dist/verdict-0.1.1.vsix                # 安装
+pnpm package                                                    # 生成 dist/verdict-judge-0.1.1.vsix
+code --install-extension dist/verdict-judge-0.1.1.vsix                # 安装
 ```
 
 > macOS 上如果提示 `command not found: code`：VS Code 里按 `Cmd+Shift+P`，执行

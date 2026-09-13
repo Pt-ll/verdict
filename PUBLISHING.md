@@ -28,8 +28,14 @@
 ### 1. 创建 publisher **[你来]**
 
 1. 用 Microsoft 账号登录 <https://marketplace.visualstudio.com/manage>
-2. 按页面引导创建 publisher：**ID 填 `YuChenZhong`**（与 `package.json` 里的 `publisher`
-   一致，本仓库已经写成这个）。扩展 ID 因此是 `YuChenZhong.verdict`。
+   2. 按页面引导创建 publisher：**ID 填 `YuChenZhong`**（与 `package.json` 里的 `publisher`
+   一致，本仓库已经写成这个）。扩展 ID 因此是 `YuChenZhong.verdict-judge`。
+
+   > **为什么扩展 ID 不叫 `verdict`**：`verdict` 这个名字在市场上已经被占用（上传时提示
+   > 「命名重复」），所以 `package.json` 的 `name` 改成了 `verdict-judge`。扩展**内部**的东西
+   > 一律没变：命令还是 `verdict.*`，设置还是 `verdict.*`，工作区目录还是 `.verdict/`。
+   > 要换别的后缀，只改 `package.json` 的 `name` 与 `test/integration/index.js` 的
+   > `EXTENSION_ID` 两处即可。
 
    创建页对 ID 的大小写可能有自己的要求（有些年份的页面会强制小写）。真遇到那种提示，
    就把三处一起改成市场接受的形式——`package.json` 的 `publisher`、本文档的示例命令、
@@ -49,7 +55,7 @@
 1. 打开 <https://marketplace.visualstudio.com/manage> **[你来]**
 2. **New extension** → 选 **Visual Studio Code**（下拉里如果只有 Azure DevOps /
    Visual Studio，说明账号的租户还没打通，见下面第 3 步）
-3. 把 `dist/verdict-0.1.1.vsix` 拖进去，确认
+3. 把 `dist/verdict-judge-0.1.1.vsix` 拖进去，确认
 
 上传走的是网页表单，跟命令行那套 Azure DevOps 令牌无关。**本仓库的发布就卡在
 令牌生成上（见文末的 TF400898），所以这条路是首选。**
@@ -80,14 +86,14 @@ vsce login YuChenZhong        # 粘上一步的 PAT（若报 Publisher not found
 # 方式一：用本仓库自带的打包器产出 VSIX，再交给 vsce 上传
 # （我们的打包器零依赖、离线可用；vsce 只负责上传与市场校验）
 pnpm package
-vsce publish --packagePath dist/verdict-0.1.1.vsix
+vsce publish --packagePath dist/verdict-judge-0.1.1.vsix
 
 # 方式二：完全交给 vsce 打包
 vsce publish
 ```
 
 发布成功后几分钟内会出现在
-<https://marketplace.visualstudio.com/items?itemName=YuChenZhong.verdict>。
+<https://marketplace.visualstudio.com/items?itemName=YuChenZhong.verdict-judge>。
 
 ### 6. 以后每次更新
 
@@ -96,7 +102,7 @@ vsce publish
 ```bash
 npm version patch             # 0.1.1 -> 0.1.2（或 minor / major）
 git push --follow-tags
-pnpm package && vsce publish --packagePath dist/verdict-0.1.1.vsix
+pnpm package && vsce publish --packagePath dist/verdict-judge-0.1.1.vsix
 ```
 
 升完版本顺手在 `CHANGELOG.md` 顶部加一节：它会被打进 VSIX，市场页面据此多出一个
@@ -122,7 +128,7 @@ npx ovsx create-namespace YuChenZhong -p <你的 token>
 4. 发布：
 
 ```bash
-npx ovsx publish -p <你的 token> dist/verdict-0.1.1.vsix
+npx ovsx publish -p <你的 token> dist/verdict-judge-0.1.1.vsix
 ```
 
    它会提示命名空间是 "unverified"（没打勾）：不影响发布与安装。那个认证徽章要求命名空间
@@ -207,13 +213,15 @@ Azure DevOps 服务端的内部错误，与你的操作、与扩展本身都无�
   接受它的清单（装完已卸载）。
 - **当前版本 0.1.1**（打包修复；侧边栏评测面板是 0.1.0），标签 `v0.1.1`。两个包都备好了，
   内容一致（各 9 个文件）：
-  - `dist/verdict-0.1.1.vsix` —— 自带打包器产出，已按市场格式修好（见上一节），首选上传这个；
-  - `dist/verdict-0.1.1-vsce.vsix` —— 官方 vsce 打的备用包，万一前者仍被拒就换它试。
+  - `dist/verdict-judge-0.1.1.vsix` —— 自带打包器产出，已按市场格式修好（见上一节），首选上传这个；
+  - `dist/verdict-judge-0.1.1-vsce.vsix` —— 官方 vsce 打的备用包，万一前者仍被拒就换它试。
   包里带 `CHANGELOG.md`，市场页因此会有 Changelog 标签页。
 - **Open VSX：已发布 0.0.1**（命名空间 `YuChenZhong`，2026-09-13），0.1.1 待发。未认证
   （要求命名空间与 GitHub 用户名一致），不影响安装。
-  页面：<https://open-vsx.org/extension/YuChenZhong/verdict>。
+  页面：<https://open-vsx.org/extension/YuChenZhong/verdict-judge>。
+  注意：改名之前的 0.0.1 发在 `YuChenZhong.verdict`，那个页面会停在 0.0.1；新版本一律发到
+  `verdict-judge`。老页面上的用户不会自动收到更新，想让他们迁过来只能在新页面里说明。
 - **官方市场：尚未发布**。publisher 已创建，但生成 PAT 这一步反复撞上 TF400898；
-  `marketplace.visualstudio.com/items?itemName=YuChenZhong.verdict` 现在还是 404。
+  `marketplace.visualstudio.com/items?itemName=YuChenZhong.verdict-judge` 现在还是 404。
   下一步走**网页上传**（见路线 A 第 2 步）。
 - 发布前确认三平台 CI 全绿（推 `main` 会自动跑）。

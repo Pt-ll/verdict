@@ -7,10 +7,11 @@ const path = require('node:path');
 const vscode = require('vscode');
 
 /** 扩展 ID = package.json 的 `${publisher}.${name}`。 */
-// 与 package.json 的 publisher + name 保持一致（这里是 YuChenZhong）。
-// 注意 VS Code 查找扩展 ID 是大小写不敏感的：写成 yuchenzhong.verdict 也能找到，
+// 与 package.json 的 publisher + name 保持一致（这里是 YuChenZhong.verdict-judge，
+// 扩展内部的东西——命令前缀、`verdict.` 设置、`.verdict/` 目录——都还是 verdict）。
+// 注意 VS Code 查找扩展 ID 是大小写不敏感的：写成 yuchenzhong.verdict-judge 也能找到，
 // 所以 publisher 的大小写不会影响用户装完能不能用。
-const EXTENSION_ID = 'YuChenZhong.verdict';
+const EXTENSION_ID = 'YuChenZhong.verdict-judge';
 
 const COMMANDS = [
   'verdict.checkEnv',

@@ -5,6 +5,9 @@
 **打包修复**：自带打包器产出的 VSIX 不符合市场后端的格式，上传时报 `TF400898`
 （一个不说明原因的内部错误）。0.1.0 的功能没有变，这一版只是把包修对。
 
+- **扩展 ID 改成 `YuChenZhong.verdict-judge`**：市场上 `verdict` 这个名字已被占用。
+  扩展内部一律没变——命令、设置还是 `verdict.*`，工作区目录还是 `.verdict/`，
+  所以在编辑器里用起来和 0.1.0 完全一样，只是安装时认的 ID 不同。
 - `[Content_Types].xml` 按包内实际文件生成：后缀带点、没有后缀的 part 用 `<Override>`
   单独声明。之前那条 `Extension=""` 是非法清单，后端建内容类型表时直接崩。
 - 清单补齐市场要的资产与属性：`Content.Details`（README）、`Content.Changelog`、

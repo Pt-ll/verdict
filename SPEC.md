@@ -1354,7 +1354,7 @@ ZIP（`[Content_Types].xml` + `extension.vsixmanifest` + `extension/**`），复
 
 ```bash
 pnpm package                                             # 生成 dist/verdict-<版本>.vsix
-code --install-extension dist/verdict-0.1.1.vsix         # 安装
+code --install-extension dist/verdict-judge-0.1.1.vsix         # 安装
 ```
 
 ---
