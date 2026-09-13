@@ -257,3 +257,17 @@ export function summarizeVerdict(cases: CaseResult[]): Verdict | null {
   }
   return null;
 }
+
+/**
+ * checker / interactor 的运行限制：它们是评测方，给得比选手宽松。
+ *
+ * 它们是出题人写的、要在一次运行里处理整个测试点，卡在和选手一样的限额上会把
+ * 正常的 checker 误判成失败——而这个失败会以 UKE 的形式报出来，让人以为是环境坏了。
+ */
+export function checkerLimits(limits: Limits): Limits {
+  return {
+    ...limits,
+    timeMs: Math.max(1000, limits.timeMs * 10),
+    memoryMb: Math.max(1024, limits.memoryMb * 2),
+  };
+}

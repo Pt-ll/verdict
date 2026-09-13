@@ -19,7 +19,11 @@ function baseRun(overrides: Partial<RunResult> = {}): RunResult {
 }
 
 function sandboxReturning(result: RunResult): Sandbox {
-  return { run: async () => result };
+  return {
+    run: async () => result,
+    // 交互题走另一条路径（core/compare/interactive.ts），这些用例不会用到。
+    runConnected: () => Promise.reject(new Error('这些用例不该走交互路径')),
+  };
 }
 
 async function judgeOne(

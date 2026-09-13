@@ -16,13 +16,23 @@ export function interpretCheckerExit(
   exitCode: number | null,
   stdout: string,
   stderr: string,
+  /** 报错/说明里怎么称呼这个程序：checker 还是交互器。 */
+  label = 'checker',
 ): CompareResult {
   const note = firstLine(stderr) || firstLine(stdout);
   switch (exitCode) {
     case 0:
-      return { verdict: 'AC', scoreRatio: 1, detail: note.length > 0 ? note : 'checker 判定通过' };
+      return {
+        verdict: 'AC',
+        scoreRatio: 1,
+        detail: note.length > 0 ? note : `${label} 判定通过`,
+      };
     case 1:
-      return { verdict: 'WA', scoreRatio: 0, detail: note.length > 0 ? note : 'checker 判定错误' };
+      return {
+        verdict: 'WA',
+        scoreRatio: 0,
+        detail: note.length > 0 ? note : `${label} 判定错误`,
+      };
     case 2:
       return {
         verdict: 'WA',
@@ -33,10 +43,12 @@ export function interpretCheckerExit(
       return {
         verdict: 'UKE',
         scoreRatio: 0,
-        detail: `checker 自身失败${note.length > 0 ? `：${note}` : ''}`,
+        detail: `${label} 自身失败${note.length > 0 ? `：${note}` : ''}`,
       };
     case 7: {
-      const points = parsePoints(stdout);
+      // 分数一般在 stdout；但交互题的 stdout 是对话通道，分数只能写在 stderr，
+      // 所以两个都认——哪边有数字就用哪边。
+      const points = hasNumber(stdout) ? parsePoints(stdout) : parsePoints(stderr);
       return {
         verdict: 'PC',
         scoreRatio: points.ratio,
@@ -169,4 +181,8 @@ function firstLine(text: string): string {
     return '';
   }
   return line.length > 200 ? `${line.slice(0, 200)}…` : line;
+}
+
+function hasNumber(text: string): boolean {
+  return /\d/.test(text);
 }

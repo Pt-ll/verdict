@@ -14,6 +14,8 @@ import { resolveTestPath, type ProblemPackage } from '../problem/package';
 import type { RunCommand, RunResult, Sandbox } from '../sandbox/sandbox';
 import { readFileOrNull } from '../../util/files';
 import { scoreProblem } from './score';
+import { checkerLimits } from '../model';
+import type { InteractiveRunner } from '../compare/interactive';
 
 // CaseResult 住在 model.ts（它是最基础的数据模型，score.ts 与 UI 都要用），
 // 这里转出去是为了不打断已有的 `from '../core/judge/judge'` 导入。
@@ -36,6 +38,11 @@ export interface JudgeOptions {
    * 给了就用它，否则按 comparator 现造一个纯函数的。
    */
   prepared?: Comparator;
+  /**
+   * 交互题（SPEC §5.6）：由它自己起选手程序并和 interactor 对接。
+   * 交互题的「输出」在对话里被消耗掉了，没法事后拿 Buffer 比较。
+   */
+  interactive?: InteractiveRunner;
 }
 
 /**
@@ -59,6 +66,9 @@ export class Judge {
     test: JudgeCaseInput,
     token?: CancellationTokenLike,
   ): Promise<CaseResult> {
+    if (this.options.interactive !== undefined) {
+      return this.judgeInteractiveCase(test, token);
+    }
     const run = await this.sandbox.run(
       test.runCmd,
       test.input,
@@ -100,6 +110,37 @@ export class Judge {
       output: run.stdout,
       answer: test.answer,
       firstDiffLine: compared.firstDiffLine,
+    };
+  }
+
+  private async judgeInteractiveCase(
+    test: JudgeCaseInput,
+    token?: CancellationTokenLike,
+  ): Promise<CaseResult> {
+    const interactive = this.options.interactive;
+    if (interactive === undefined) {
+      throw new Error('交互题路径需要 interactive');
+    }
+    const points = test.points ?? 1;
+    // 交互题由 interactor 当裁判，判定规则见 core/compare/interactive.ts。
+    const outcome = await interactive.run(
+      test.runCmd,
+      test.input,
+      test.answer,
+      this.options.limits,
+      token,
+    );
+    return {
+      test: test.testId,
+      verdict: outcome.result.verdict,
+      score: points * outcome.result.scoreRatio,
+      timeMs: outcome.run.wallMs,
+      memoryKb: outcome.run.peakMemKb,
+      exitCode: outcome.run.exitCode,
+      signal: outcome.run.signal,
+      message: outcome.result.detail,
+      output: outcome.run.stdout,
+      answer: test.answer,
     };
   }
 }
@@ -152,16 +193,6 @@ function firstLine(buffer: Buffer): string {
     return '';
   }
   return line.length > 200 ? `${line.slice(0, 200)}…` : line;
-}
-
-// checker / interactor 是评测方，限制给得比选手宽松：它们是出题人写的、要在一次运行里
-// 处理整个测试点，卡在和选手一样的限额上会把出题人的正常 checker 误判成失败。
-export function checkerLimits(limits: Limits): Limits {
-  return {
-    ...limits,
-    timeMs: Math.max(1000, limits.timeMs * 10),
-    memoryMb: Math.max(1024, limits.memoryMb * 2),
-  };
 }
 
 /** 出题人配置有问题时（checker 编译不过、找不到文件）：每个测试点都记 UKE 并说明原因。 */
@@ -234,7 +265,8 @@ export async function judgeProblem(
   const judge = new Judge(sandbox, {
     limits: pkg.problem.limits,
     comparator: pkg.problem.comparator,
-    prepared: prepared.comparator,
+    ...(prepared.comparator === undefined ? {} : { prepared: prepared.comparator }),
+    ...(prepared.interactive === undefined ? {} : { interactive: prepared.interactive }),
   });
 
   const cases: CaseResult[] = [];

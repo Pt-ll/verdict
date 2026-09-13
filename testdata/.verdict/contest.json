@@ -3,7 +3,7 @@
   "id": "demo",
   "title": "演示赛",
   "maxRejudge": 1,
-  "problems": ["A", "B"],
+  "problems": ["A", "B", "C"],
   "contestants": [
     { "id": "alice", "name": "Alice", "folder": "players/alice" },
     { "id": "bob", "name": "Bob", "folder": "players/bob" }

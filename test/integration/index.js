@@ -226,11 +226,11 @@ async function checkContest(api) {
     `所有选手都应当有源码，缺的是：${JSON.stringify(summary.missing)}`,
   );
 
-  // Alice：A 题两个子任务都对（100）+ B 题满分（100）= 200
-  // Bob：A 题大数据溢出（30）+ B 题满分（100）= 130
+  // Alice：A 题两个子任务都对（100）+ B 题满分（100）+ C 题交互（100）= 300
+  // Bob：A 题大数据溢出（30）+ B 题满分（100）+ C 题交互（100）= 230
   const totals = new Map(summary.standings.totals.map((item) => [item.contestant, item.score]));
-  assert.equal(totals.get('alice'), 200, `Alice 应当 200 分，实际 ${totals.get('alice')}`);
-  assert.equal(totals.get('bob'), 130, `Bob 应当 130 分，实际 ${totals.get('bob')}`);
+  assert.equal(totals.get('alice'), 300, `Alice 应当 300 分，实际 ${totals.get('alice')}`);
+  assert.equal(totals.get('bob'), 230, `Bob 应当 230 分，实际 ${totals.get('bob')}`);
   assert.deepEqual(
     summary.standings.ranks.map((item) => [item.contestant, item.rank]),
     [
@@ -239,7 +239,7 @@ async function checkContest(api) {
     ],
     '名次应当按总分降序',
   );
-  console.log('[verdict] 整场评测：alice 200 分、bob 130 分，名次正确');
+  console.log('[verdict] 整场评测：alice 300 分、bob 230 分，名次正确（含一道交互题）');
 
   // 导出的 HTML 必须自包含：断网双击就能看，不依赖字体 / CDN / 图片。
   const html = api.standingsHtml();

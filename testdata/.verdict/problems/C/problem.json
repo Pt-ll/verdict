@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "id": "C",
+  "name": "C. 猜数字",
+  "type": "interactive",
+  "limits": { "timeMs": 2000, "memoryMb": 256, "stackMb": 256, "outputKb": 4096 },
+  "comparator": { "mode": "interactive", "interactor": "extra/interactor.cpp" },
+  "tests": [{ "id": "1", "input": "data/1.in", "answer": "data/1.out", "points": 100 }]
+}

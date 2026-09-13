@@ -373,6 +373,12 @@ export interface Sandbox {
 - `runInteractive` 同时启动两个进程，用双管道互连（交互题）。
 - 执行与限额细节见 §8。
 
+实现说明：落地时叫 `runConnected(primary, secondary, primaryLimits, secondaryLimits, token?)`，
+两边各有自己的限额（选手用题目限制，交互器用放宽后的），总时限取选手的时限——交互的墙钟时间
+由选手的表现决定，交互器不该另算一份。返回值是两侧的 `RunResult` 加一个 `endedFirst`，
+因为判定时需要知道「谁把谁等死了」。一边结束时必须关掉另一边的 stdin，否则对端会一直等输入，
+整场评测就卡在那里；结束前两边都要杀掉，不留孤儿进程。
+
 ### 5.4 Comparator（比较）★
 
 ```ts
@@ -503,6 +509,19 @@ export interface ProblemTypeAdapter {
 
 - **traditional**：标准 stdin → stdout，交给 Comparator（default / line / real / spj）。
 - **interactive（交互题）**：选手程序与基于 testlib 的 `interactor` 通过 `runInteractive` 互连，最终输出由 Comparator 比较（本版只确保 C++）。
+
+实现说明（与上面那句话的差异，以这里为准）：交互题**由 interactor 当裁判**，不再拿选手的
+stdout 去和 `.out` 比——那份数据已经在对话里被消耗掉了，硬要比只会比出个假结论。
+interactor 用与 checker 相同的退出码协议（0/1/2/3/7），判定优先级是：
+
+1. 选手被限额杀 → TLE / MLE / OLE（§8.5 的优先级最高，交互题也不例外）；
+2. 选手自己崩了而交互器只说「答案不对」→ RE：交互器看到 EOF 就会判错，照它报 WA 会把
+   「程序崩溃」这个真正的根因藏起来；
+3. 其余情况以交互器的退出码为准；
+4. 交互器没能正常结束（被限额杀、退出码不认识）→ UKE：那是出题人的问题。
+
+交互题的部分分写在 **stderr** 上（它的 stdout 是对话通道，写分数会把协议弄脏），所以
+退出码 7 的分数在 stdout 与 stderr 两处都会去认。
 
 ### 5.7 Contest（比赛/选手/重测/统计）
 
