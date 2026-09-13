@@ -15,8 +15,9 @@
 
 还有两样建议、但需要你自己决定：
 
-- **`LICENSE` 文件**：没选许可证的话，别人在法律上不能用你的代码。MIT / Apache-2.0 是这类
-  工具的常见选择。选好后放到仓库根，并在 `package.json` 里加 `"license": "MIT"`。
+- **`LICENSE` 文件**：已经有了（MIT，版权归 Pt-ll），`package.json` 里也写了 `"license": "MIT"`。
+  打包时会一并放进 VSIX，并在清单里写上 `<License>`——市场页面上那行「License: MIT」
+  就是从清单读的，这一步漏了页面会显示成「没有许可证」。
 - **截图**：市场页面里放几张截图（Testing 面板、榜单 WebView、diff）会明显提升可信度。
   放到 `media/screenshots/`，在 README 里用相对路径引用即可。
 

@@ -86,6 +86,23 @@ describe('packageVsix', () => {
     expect(manifest).toContain('Value="^1.95.0"');
     // 安装器靠这一行找到扩展清单；写错了会装不上。
     expect(manifest).toContain('Path="extension/package.json"');
+    // 夹具里没有 LICENSE，这一行就不该出现。
+    expect(manifest).not.toContain('<License>');
+  });
+
+  it('有 LICENSE 时把它打进包，并在清单里声明（市场页面靠它显示许可证）', async () => {
+    const root = makeExtensionRoot();
+    fs.writeFileSync(path.join(root, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Pt-ll\n');
+
+    const result = await packageVsix({ root });
+    const zip = fs.readFileSync(result.outFile);
+    const names = listZip(zip).map((entry) => entry.name);
+    const manifest = extractZip(zip)
+      .find((entry) => entry.name === 'extension.vsixmanifest')
+      ?.data.toString('utf8');
+
+    expect(names).toContain('extension/LICENSE');
+    expect(manifest).toContain('<License>extension/LICENSE</License>');
   });
 });
 

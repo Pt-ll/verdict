@@ -55,9 +55,18 @@ export async function packageVsix(options: VsixOptions): Promise<VsixResult> {
   const manifest = JSON.parse(
     await fs.promises.readFile(path.join(root, 'package.json'), 'utf8'),
   ) as ManifestJson;
+  // 市场页面上那行「License: MIT」来自清单里的 <License> 元素，vsce 会写，我们也得写——
+  // 不然用我们的打包器发上去，页面会显示成「没有许可证」。
+  const license = await firstExisting(root, ['LICENSE', 'LICENSE.md', 'LICENSE.txt']);
 
   const entries: ZipEntry[] = [
-    { name: 'extension.vsixmanifest', data: Buffer.from(manifestXml(manifest), 'utf8') },
+    {
+      name: 'extension.vsixmanifest',
+      data: Buffer.from(
+        manifestXml(manifest, license === null ? undefined : `extension/${license}`),
+        'utf8',
+      ),
+    },
     { name: '[Content_Types].xml', data: Buffer.from(CONTENT_TYPES, 'utf8') },
   ];
   for (const item of INCLUDED) {
@@ -114,7 +123,7 @@ async function collect(root: string, relative: string, prefix: string): Promise<
   return entries;
 }
 
-export function manifestXml(manifest: ManifestJson): string {
+export function manifestXml(manifest: ManifestJson, licensePath?: string): string {
   const categories = (manifest.categories ?? []).join(',');
   const tags = (manifest.keywords ?? []).join(',');
   return [
@@ -124,6 +133,7 @@ export function manifestXml(manifest: ManifestJson): string {
     `    <Identity Language="en-US" Id="${escapeXml(manifest.name)}" Version="${escapeXml(manifest.version)}" Publisher="${escapeXml(manifest.publisher ?? 'unknown')}" />`,
     `    <DisplayName>${escapeXml(manifest.displayName ?? manifest.name)}</DisplayName>`,
     `    <Description xml:space="preserve">${escapeXml(manifest.description ?? '')}</Description>`,
+    ...(licensePath === undefined ? [] : [`    <License>${escapeXml(licensePath)}</License>`]),
     `    <Categories>${escapeXml(categories)}</Categories>`,
     `    <Tags>${escapeXml(tags)}</Tags>`,
     '    <GalleryFlags>Public</GalleryFlags>',
@@ -177,4 +187,14 @@ async function statOrNull(target: string): Promise<fs.Stats | null> {
   } catch {
     return null;
   }
+}
+
+/** 按顺序找第一个存在的文件（许可证有 .md / .txt 几种常见写法）。 */
+async function firstExisting(root: string, names: string[]): Promise<string | null> {
+  for (const name of names) {
+    if ((await statOrNull(path.join(root, name))) !== null) {
+      return name;
+    }
+  }
+  return null;
 }
