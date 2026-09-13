@@ -7,4 +7,7 @@
 !dist/**
 !media/**
 !README.md
+# 市场页面会把它渲染成「Changelog」标签页；我们的打包器早就装它，这里也得放行，
+# 否则改用 vsce 自己打包时两边产物就会不一样。
+!CHANGELOG.md
 !LICENSE

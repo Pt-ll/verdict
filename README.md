@@ -4,9 +4,11 @@
 
 **完全离线 · 零运行时依赖 · Windows / macOS / Linux 一致。**
 
+更新日志见 [CHANGELOG.md](CHANGELOG.md)（最新 0.1.0：侧边栏评测面板）。
+
 ## 它能做什么
 
-- **侧边栏面板**：活动栏上点一下 Verdict 图标，题目、测试点、限制、比较方式、子任务、榜单都在一个面板里。**不用手写 JSON**——面板里每改一处都会写回 `problem.json` / `contest.json`，想用 git 管数据的人照样可以继续手写。
+- **侧边栏面板**：活动栏上点一下 Verdict 图标就能出题、评测、看榜，**不用手写 JSON**（下一节细说）。
 - **评测当前文件**：源码顶部有 `▶ 评测`；判定进状态栏与输出通道，编译错误进问题面板（可点击跳转到行列）。
 - **题目包**：一个 `problem.json` 描述限制、比较方式、测试点与子任务；子任务支持依赖与 min / sum 计分，依赖没满分时后继子任务记为「跳过」而不是 0 分。
 - **比赛**：选手 × 题目整场评测、重测（受上限约束）、榜单、导出**离线可开**的自包含 HTML 成绩单。
@@ -15,6 +17,21 @@
 - **对比输出**：WA 时自动打开原生 diff，并跳到首个不同的行。
 - **Testing 面板**：题目 > 子任务 > 测试点，可单独重跑、可单独调试。
 - **调试**：断点单步，测试点输入自动接到 stdin（不需要你手动喂）。
+
+## 侧边栏面板
+
+活动栏上的 **Verdict** 图标点开就是操作台，三个页签：
+
+| 页签 | 能做什么 |
+| --- | --- |
+| **题目** | 比赛信息与题目列表；新建 / 导入 / 导出题目包；改选中题目的限制与比较方式（`default` / `line` / `real` / `spj` / `interactive`，checker 与 interactor 用文件选择器指定） |
+| **测试点** | 按子任务分组，每行给最近一次判定、用时与内存；`▶` 单点运行、`🐞` 调试、`⇄` 看 diff、`▸` 展开输入 / 标准答案 / 实际输出；增删子任务、改分值 / 依赖 / 计分、按点均分；扫描 `data/` 登记新测试点 |
+| **榜单** | 选手 × 题目矩阵，点单元格看重测详情；评测全部、导出 HTML、打开完整榜单 |
+
+顶部一行是当前题目、当前源码与 `▶ 评测` / `🐞 调试` / `■ 取消`，底部一行显示进度与最近一次结果。
+
+面板只是 `problem.json` / `contest.json` 的**一个视图**：每次编辑都是读-改-写，和手改文件完全等价。
+所以「不想碰 JSON 的人用面板」与「想用 git 管数据的人继续手写」两不误，也不会出现两份数据。
 
 ## 快速开始
 
@@ -25,17 +42,17 @@
 | 从哪里装 | 怎么做 |
 | --- | --- |
 | VSCodium / Gitpod / Theia 等 Open VSX 源 | 扩展面板里搜 `Verdict` |
-| 任何编辑器（手动） | 下载 [VSIX](https://open-vsx.org/extension/YuChenZhong/verdict)，再 `code --install-extension <文件>` |
+| 任何编辑器（手动） | 从 [Open VSX 页面](https://open-vsx.org/extension/YuChenZhong/verdict) 下 VSIX，再 `code --install-extension <文件>` |
 | 本仓库的开发版 | `pnpm package` 之后装 `dist/verdict-<版本>.vsix` |
 
-**VS Code 官方市场还没发布**（发布流程卡在微软的 Azure DevOps 鉴权上，进展记在 `PUBLISHING.md`）。
-两边用的是同一个包，官方市场补发时不用重新打包。
+Open VSX 上现为 0.0.1；**VS Code 官方市场还没发布**（卡在微软 Azure DevOps 的鉴权上，
+绕法记在 `PUBLISHING.md`）。两边用的是同一个 VSIX，官方市场补发时不用重新打包。
 
 本仓库内打包与安装：
 
 ```bash
-pnpm package                                                    # 生成 dist/verdict-0.0.1.vsix
-code --install-extension dist/verdict-0.0.1.vsix                # 安装
+pnpm package                                                    # 生成 dist/verdict-0.1.0.vsix
+code --install-extension dist/verdict-0.1.0.vsix                # 安装
 ```
 
 > macOS 上如果提示 `command not found: code`：VS Code 里按 `Cmd+Shift+P`，执行
@@ -61,7 +78,7 @@ code --install-extension dist/verdict-0.0.1.vsix                # 安装
 2. 点 `＋ 新建题目` → 填题目 id、时限、内存
 3. 把 `1.in` / `1.out`（可以有很多组）放进题目的 `data/` 目录
 4. 回到「测试点」页签点 **扫描新测试点**，再用 **＋ 子任务** 或 **按点均分** 分档
-5. 选手源码放在 `players/<选手>/<题目>.cpp`，回第 1 步的 `Verdict: 评测全部`
+5. 选手源码放在 `players/<选手>/<题目>.cpp`，回到「榜单」页签点 **评测全部**
 
 面板之外，同样的功能都有命令（`Verdict: 导入测试点`、`Verdict: 配置子任务`……），
 哪边顺手用哪边；JSON 没有变成摆设，它仍然是唯一的存储格式。
@@ -99,8 +116,9 @@ code --install-extension dist/verdict-0.0.1.vsix                # 安装
 }
 ```
 
-比较方式有四种：`default` / `line`（按行）、`real`（实数误差）、`spj`（testlib checker），
-外加 `interactive`（testlib interactor）。checker / interactor 需要的 `testlib.h` 按
+比较方式有五种：`default`（忽略行尾空白）、`line`（按行，报告首个不同行）、
+`real`（实数，绝对 + 相对误差）、`spj`（testlib checker）、`interactive`（testlib interactor）。
+checker / interactor 需要的 `testlib.h` 按
 「题目包 `extra/` → 工作区 `.verdict/testlib/` → 设置 `verdict.testlibPath`」的顺序查找。
 
 ## 命令
@@ -174,7 +192,11 @@ pnpm package          # 打包 VSIX（自带打包器，零依赖）
 `VERDICT_ITEST_KEEP_EXTENSIONS=1 pnpm test:integration`。
 
 代码分层：`src/core/**` 是平台无关的评测内核（禁止 import vscode，可在纯 Node 下单测），
-`src/vscode/**` 只做注册与展示，`src/util/**` 是两端共用的纯函数。设计细节见 `SPEC.md`。
+`src/vscode/**` 只做注册与展示，`src/util/**` 是两端共用的纯函数。
+设计细节见 `SPEC.md`，发到市场的步骤见 `PUBLISHING.md`。
+
+`pnpm package` 产出的是自包含 VSIX（`package.json`、`dist/extension.js`、图标、README、
+CHANGELOG、LICENSE），不依赖 `vsce` 也不联网——发布时把它交给市场即可。
 
 ## 许可
 

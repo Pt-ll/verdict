@@ -1349,11 +1349,12 @@ ZIP（`[Content_Types].xml` + `extension.vsixmanifest` + `extension/**`），复
 
 发布相关：市场页面就是 `README.md` 的渲染，加上 `package.json` 的描述、`icon`（128×128 RGBA PNG，
 放在 `media/icon.png`，源图留在 `assets/icon-source.png`）与分类；`repository` 字段是 `vsce`
-的硬要求。步骤见 `PUBLISHING.md`（含官方市场与 Open VSX 两条路线）。
+的硬要求；`CHANGELOG.md` 也会进包，市场页面据此多出一个「Changelog」标签页。
+步骤见 `PUBLISHING.md`（含官方市场与 Open VSX 两条路线，以及在 PAT 卡住时用网页直接传 VSIX 的办法）。
 
 ```bash
 pnpm package                                             # 生成 dist/verdict-<版本>.vsix
-code --install-extension dist/verdict-0.0.1.vsix         # 安装
+code --install-extension dist/verdict-0.1.0.vsix         # 安装
 ```
 
 ---

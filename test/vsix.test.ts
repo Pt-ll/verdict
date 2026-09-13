@@ -37,6 +37,7 @@ function makeExtensionRoot(): string {
   write('dist/verdict-0.0.1.vsix', '上一次的包，不该套娃\n');
   write('media/icon.png', 'not-really-a-png');
   write('README.md', '# Verdict\n');
+  write('CHANGELOG.md', '# 更新日志\n');
   write('.DS_Store', 'junk');
   write('src/extension.ts', '// 源码不该进包\n');
 
@@ -58,6 +59,8 @@ describe('packageVsix', () => {
     expect(names).toContain('extension/dist/extension.js');
     expect(names).toContain('extension/media/icon.png');
     expect(names).toContain('extension/README.md');
+    // 市场页面靠它渲染出「Changelog」标签页。
+    expect(names).toContain('extension/CHANGELOG.md');
   });
 
   it('源码、开发 sourcemap、系统垃圾文件与上一次的包都不进 VSIX', async () => {
@@ -149,5 +152,12 @@ describe('发布前置条件', () => {
     expect(icon.readUInt32BE(16)).toBe(128);
     expect(icon.readUInt32BE(20)).toBe(128);
     expect(fs.existsSync(path.join(root, 'README.md'))).toBe(true);
+  });
+
+  it('CHANGELOG.md 在（发版记录，市场页面的 Changelog 标签页靠它）', () => {
+    const changelog = path.join(root, 'CHANGELOG.md');
+    expect(fs.existsSync(changelog)).toBe(true);
+    // 最新一版写在最前面，市场页面读到的就是这一段。
+    expect(fs.readFileSync(changelog, 'utf8')).toMatch(/^# .+\n\n## \d+\.\d+\.\d+ — \d{4}-\d{2}-\d{2}/);
   });
 });
