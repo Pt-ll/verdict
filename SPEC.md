@@ -1255,6 +1255,10 @@ ZIP（`[Content_Types].xml` + `extension.vsixmanifest` + `extension/**`），复
 两个容易踩的点，都写进打包器了：开发用的 `*.map` 不进生产包（体积最大，而且陈旧的那份
 比没有更糟），以及输出写在 `dist/` 下时要跳过 `*.vsix`（否则会把上一次的包打进这一次的包里）。
 
+发布相关：市场页面就是 `README.md` 的渲染，加上 `package.json` 的描述、`icon`（128×128 PNG，
+由 `src/tools/icon.ts` 画出来）与分类；`repository` 字段是 `vsce` 的硬要求。步骤见
+`PUBLISHING.md`（含官方市场与 Open VSX 两条路线）。
+
 ```bash
 pnpm package                                             # 生成 dist/verdict-<版本>.vsix
 code --install-extension dist/verdict-0.0.1.vsix         # 安装

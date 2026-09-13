@@ -4,6 +4,18 @@
   "description": "在编辑器内完成出题、造数据、评测、重测、榜单与导出的本地评测系统。完全离线、零运行时依赖。",
   "version": "0.0.1",
   "publisher": "verdict-dev",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pt-ll/verdict.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Pt-ll/verdict/issues"
+  },
+  "galleryBanner": {
+    "color": "#1f3e8c",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.95.0",
     "node": ">=20"
@@ -12,6 +24,15 @@
   "categories": [
     "Testing",
     "Other"
+  ],
+  "keywords": [
+    "judge",
+    "评测",
+    "oi",
+    "icpc",
+    "competitive-programming",
+    "testlib",
+    "offline"
   ],
   "main": "./dist/extension.js",
   "scripts": {
