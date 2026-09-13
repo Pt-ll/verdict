@@ -57,14 +57,16 @@ Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2
   - `problemA/`：一个完整题目包，用来验收 Testing 面板与子任务计分。
   - `.vscode/settings.json`：时限 1000ms、内存 256MB、输出 64KB。
   改样例时要同步改 `test/integration/index.js` 里的期望表。
+- 本机想连真实调试会话一起验（会真的拉起 lldb 与 cpptools）：
+  `VERDICT_ITEST_KEEP_EXTENSIONS=1 pnpm test:integration`。它借用机器上的扩展目录
+  （不借用户数据目录，否则会和你正开着的 VSCode 抢实例）。CI 上这个开关是关的，
+  调试只验「没装调试扩展时给可操作提示」那条路径。
 
 ## 里程碑（见 SPEC §12）
 
 - M1 骨架 + 编译运行 + 单点判定 ✅（2026-09-12 三平台 CI 全绿）
-- M2 题目包 + 测试点 + 子任务 + Testing/diff ← 当前
-  （题目包读写、子任务计分、Testing 树、verdict:// 虚拟文档、原生 diff、四个编辑命令都已落地；
-  还差 Testing 的 debug profile，见 SPEC §4.4 的说明。）
-- M3 比赛 + 选手 + 重测 + 榜单 + HTML
+- M2 题目包 + 测试点 + 子任务 + Testing/diff ✅（本机验收全过；三平台 CI 待确认）
+- M3 比赛 + 选手 + 重测 + 榜单 + HTML ← 当前
 - M4 交互题 + testlib SPJ + 导入导出 + 打包
 
 ## 代码风格

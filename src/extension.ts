@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { JudgeOutcome } from './engineFacade';
 import { CaseDocumentStore } from './vscode/caseDocs';
 import { registerCommands } from './vscode/commands';
+import { startDebug, type DebugResult } from './vscode/debug';
 import { JudgeCodeLensProvider } from './vscode/codelens';
 import { DiagnosticsPublisher } from './vscode/diagnostics';
 import { VerdictOutput } from './vscode/output';
@@ -23,6 +24,8 @@ export interface VerdictApi {
   testingItems(): vscode.TestItem[];
   /** 按 Testing 面板的语义跑一组测试项，返回这次判定的结果。 */
   runTestingItems(items: vscode.TestItem[]): Promise<JudgeOutcome | null>;
+  /** 用当前文件的某个测试点起调试会话；集成测试用它验证「没装调试扩展」这条路径。 */
+  debugFirstCase(problemRoot?: string, testId?: string): Promise<DebugResult>;
 }
 
 /**
@@ -54,6 +57,8 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
     output,
     judgeInPackage: (document, problemRoot, token) =>
       commands.judgeDocumentInPackage(document, problemRoot, token),
+    debugInPackage: (document, problemRoot, testId) =>
+      startDebug({ context, output }, document, { problemRoot, testId }),
   });
   hooks.refreshTests = () => testing.refresh();
 
@@ -81,6 +86,16 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
     refreshTesting: () => testing.refresh(),
     testingItems: () => testing.roots(),
     runTestingItems: (items) => testing.run(items),
+    debugFirstCase: (problemRoot, testId) => {
+      const document = vscode.window.activeTextEditor?.document;
+      if (document === undefined) {
+        return Promise.resolve<DebugResult>({
+          kind: 'no-source',
+          message: '请先打开一个源码文件。',
+        });
+      }
+      return startDebug({ context, output }, document, { problemRoot, testId });
+    },
   };
 }
 

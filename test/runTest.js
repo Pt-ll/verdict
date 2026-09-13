@@ -7,6 +7,7 @@
 // 触发方式：`pnpm test:integration`。
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { downloadAndUnzipVSCode, runTests } = require('@vscode/test-electron');
@@ -16,6 +17,14 @@ const ROOT = path.resolve(__dirname, '..');
 // problemA 是个完整的题目包，用来验收 Testing 面板与子任务计分。
 const WORKSPACE = path.join(ROOT, 'testdata');
 const TESTS_PATH = path.join(__dirname, 'integration', 'index.js');
+
+// CI 上没有安装任何调试扩展，所以调试相关的断言只跑「没装扩展时给可操作提示」那条路径。
+// 想在本机验证真实调试会话（会真的拉起 lldb）：
+//   VERDICT_ITEST_KEEP_EXTENSIONS=1 pnpm test:integration
+const keepExtensions = process.env.VERDICT_ITEST_KEEP_EXTENSIONS === '1';
+
+/** 机器上真实安装的扩展目录（本机验证调试会话时借用它，见下方 launchArgs）。 */
+const MACHINE_EXTENSIONS = path.join(os.homedir(), '.vscode', 'extensions');
 
 /**
  * 优先用本机已装的 VS Code：开发机多数离线，而下载一份 VS Code 有好几百 MB。
@@ -61,10 +70,19 @@ async function main() {
     extensionTestsPath: TESTS_PATH,
     launchArgs: [
       WORKSPACE,
-      // 只加载被测扩展；跳过「是否信任此工作区」的弹窗，否则测试会卡在界面上等交互。
-      '--disable-extensions',
+      // 默认只加载被测扩展；跳过「是否信任此工作区」的弹窗，否则测试会卡在界面上等交互。
+      //
+      // 本机验证调试会话时改用机器上真实的扩展目录：test-electron 默认会在
+      // .vscode-test/extensions 下建一个空目录，里面没有 cpptools，调试根本无从验证。
+      // 只借扩展目录、不借用户数据目录——否则会和你正开着的 VS Code 抢实例。
+      ...(keepExtensions
+        ? [`--extensions-dir=${MACHINE_EXTENSIONS}`]
+        : ['--disable-extensions']),
       '--disable-workspace-trust',
     ],
+    extensionTestsEnv: {
+      VERDICT_ITEST_KEEP_EXTENSIONS: keepExtensions ? '1' : '',
+    },
   });
   process.exit(exitCode);
 }

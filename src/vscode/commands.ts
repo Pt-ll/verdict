@@ -9,9 +9,15 @@ import {
   type Toolchain,
 } from '../core/compiler';
 import { runProcess } from '../util/process';
-import { DEFAULT_LIMITS, type ComparatorConfig, type Limits, type Verdict } from '../core/model';
-import type { CancellationTokenLike, CaseResult, SubtaskResult } from '../core/model';
+import type {
+  CancellationTokenLike,
+  CaseResult,
+  SubtaskResult,
+  Verdict,
+} from '../core/model';
 import { loadProblem } from '../core/problem/package';
+import { debugFailureText, startDebug, type DebugResult } from './debug';
+import { readCompilerSetting, readEngineOptions } from './config';
 import {
   clearToolchainCache,
   judgeSourceFile,
@@ -30,6 +36,7 @@ import type { CaseDocumentStore } from './caseDocs';
 export const COMMAND_CHECK_ENV = 'verdict.checkEnv';
 export const COMMAND_JUDGE_CURRENT = 'verdict.judgeCurrent';
 export const COMMAND_CANCEL = 'verdict.cancel';
+export const COMMAND_DEBUG_CASE = 'verdict.debugCase';
 
 const SETTINGS_SECTION = 'verdict';
 
@@ -66,6 +73,7 @@ export function registerCommands(deps: CommandDeps): VerdictCommands {
       vscode.commands.registerCommand(COMMAND_CHECK_ENV, () => run.checkEnv()),
       vscode.commands.registerCommand(COMMAND_JUDGE_CURRENT, () => run.judgeCurrent()),
       vscode.commands.registerCommand(COMMAND_CANCEL, () => run.cancel()),
+      vscode.commands.registerCommand(COMMAND_DEBUG_CASE, () => debugCurrent(deps)),
     ],
     judgeDocument: (document) => run.judgeDocument(document),
     judgeDocumentInPackage: (document, problemRoot, token) =>
@@ -260,7 +268,7 @@ class JudgeRunner {
           progressToken.onCancellationRequested(() => cancellation.cancel());
           return execute(
             sourcePath,
-            readEngineOptions(this.deps),
+            readEngineOptions(this.deps.context),
             cancellation.token,
             (stage) => {
               progress.report({ message: stage });
@@ -405,36 +413,37 @@ function readAutoDiffSetting(): boolean {
   );
 }
 
-function readCompilerSetting(): string {
-  return (vscode.workspace.getConfiguration(SETTINGS_SECTION).get<string>('compiler') ?? '').trim();
-}
+/** 「Verdict: 调试首测点」：用当前文件的题目包，拿第一个测试点的输入起调试会话。 */
+async function debugCurrent(deps: CommandDeps): Promise<void> {
+  const document = vscode.window.activeTextEditor?.document;
+  if (document === undefined) {
+    void vscode.window.showWarningMessage('Verdict：请先打开一个源码文件。');
+    return;
+  }
 
-function readEngineOptions(deps: CommandDeps): EngineOptions {
-  const config = vscode.workspace.getConfiguration(SETTINGS_SECTION);
-  const memoryMb = config.get<number>('defaultMemoryMb') ?? DEFAULT_LIMITS.memoryMb;
-  const limits: Limits = {
-    timeMs: config.get<number>('defaultTimeMs') ?? DEFAULT_LIMITS.timeMs,
-    memoryMb,
-    // 栈上限默认与内存上限同值，与 SPEC §6.3 的 problem.json 示例一致。
-    stackMb: memoryMb,
-    outputKb: config.get<number>('outputLimitKb') ?? DEFAULT_LIMITS.outputKb,
-  };
+  const result: DebugResult = await startDebug(
+    { context: deps.context, output: deps.output },
+    document,
+  );
+  const failure = debugFailureText(result);
+  if (failure === null) {
+    return;
+  }
 
-  const comparator: ComparatorConfig = {
-    mode: config.get<'default' | 'line' | 'real'>('comparator') ?? 'default',
-    absEps: config.get<number>('realAbsEps'),
-    relEps: config.get<number>('realRelEps'),
-  };
-
-  return {
-    compilerPath: readCompilerSetting(),
-    flags: config.get<string[]>('flags') ?? [],
-    limits,
-    comparator,
-    cacheDir: path.join(deps.context.globalStorageUri.fsPath, 'cache'),
-    // 题目包的向上查找以工作区为界，别让工作区外的文件一路找到用户主目录去。
-    workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
-  };
+  deps.output.error(failure);
+  if (result.kind === 'no-debugger') {
+    // 直接带用户去装扩展，而不是只丢一句「找不到 xxx」。
+    await offerChoice(
+      `Verdict：${failure}`,
+      'error',
+      '搜索扩展',
+      'workbench.extensions.search',
+      result.extensionId,
+      deps.output,
+    );
+    return;
+  }
+  void vscode.window.showErrorMessage(`Verdict：${failure}`);
 }
 
 function logJudged(output: VerdictOutput, outcome: JudgedOutcome): void {

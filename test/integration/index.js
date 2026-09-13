@@ -15,6 +15,7 @@ const COMMANDS = [
   'verdict.configureSubtasks',
   'verdict.setLimits',
   'verdict.showDiff',
+  'verdict.debugCase',
 ];
 
 /**
@@ -66,6 +67,7 @@ async function run() {
   await checkCompileError(api, folder.uri);
   await checkDiff();
   await checkProblemPackage(api, folder.uri);
+  await checkDebug(api, folder.uri);
 
   console.log('[verdict] 集成测试全部通过');
 }
@@ -159,6 +161,44 @@ async function openSource(root, relative) {
   // 面板跑测试时用的是「当前打开的源文件」，所以这里必须真的把它显示出来。
   await vscode.window.showTextDocument(document);
   return document;
+}
+
+/**
+ * 调试首测点（SPEC §4.4 / §4.8）。
+ *
+ * 测试宿主默认禁用了所有扩展，于是这里只能走「没装调试扩展」那条路径——它恰恰是最需要
+ * 给出可操作提示的地方。本机想验证真的会话：VERDICT_ITEST_KEEP_EXTENSIONS=1。
+ */
+async function checkDebug(api, root) {
+  await openSource(root, 'problemA/solve.cpp');
+  const problemRoot = vscode.Uri.joinPath(root, 'problemA').fsPath;
+  const result = await api.debugFirstCase(problemRoot, '1');
+
+  if (process.env.VERDICT_ITEST_KEEP_EXTENSIONS !== '1') {
+    assert.equal(
+      result.kind,
+      'no-debugger',
+      `测试宿主里没有调试扩展，期望 no-debugger，实际 ${result.kind}：${result.message || ''}`,
+    );
+    assert.ok(
+      result.message.includes('ms-vscode.cpptools'),
+      '提示里应当写清楚要装哪个扩展，否则用户无从下手',
+    );
+    console.log('[verdict] 调试：没有调试扩展时给出可操作提示');
+    return;
+  }
+
+  assert.equal(result.kind, 'started', `期望 started，实际 ${result.kind}：${result.message || ''}`);
+  assert.ok(result.program.length > 0, '应当先编译出调试版可执行文件');
+  assert.ok(
+    result.inputPath !== undefined && result.inputPath.endsWith('1.in'),
+    `首个测试点的输入应当被接上，实际 ${result.inputPath}`,
+  );
+  assert.ok(vscode.debug.activeDebugSession !== undefined, '调试会话应当是激活状态');
+
+  // 收拾干净：留着会话会让扩展宿主退出变慢。
+  await vscode.debug.stopDebugging();
+  console.log(`[verdict] 调试：会话已启动（stdio 注入 ${result.injected ? '已尝试' : '未尝试'}），随后停止`);
 }
 
 async function checkJudgement(api, root, item) {

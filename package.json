@@ -54,6 +54,10 @@
       {
         "command": "verdict.showDiff",
         "title": "Verdict: 对比输出"
+      },
+      {
+        "command": "verdict.debugCase",
+        "title": "Verdict: 调试首测点"
       }
     ],
     "configuration": {

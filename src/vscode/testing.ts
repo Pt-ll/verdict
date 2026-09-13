@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import type { CaseResult, Subtask, SubtaskResult, TestCase } from '../core/model';
 import { loadProblem, PROBLEM_FILE, type ProblemPackage } from '../core/problem/package';
 import type { JudgeOutcome } from '../engineFacade';
+import type { DebugResult } from './debug';
 import type { VerdictOutput } from './output';
 import { discoverProblemRoots } from './workspace';
 
@@ -17,6 +18,12 @@ export interface TestingDeps {
     problemRoot: string,
     token?: vscode.CancellationToken,
   ) => Promise<JudgeOutcome | null>;
+  /** 起一个调试会话；testId 为空表示用第一个测试点。 */
+  debugInPackage: (
+    document: vscode.TextDocument,
+    problemRoot: string,
+    testId?: string,
+  ) => Promise<DebugResult>;
 }
 
 export interface TestingHandle {
@@ -255,6 +262,67 @@ export function registerTesting(deps: TestingDeps): TestingHandle {
     true,
   );
 
+  // 调试首测点（SPEC §4.4）：与运行 profile 共用同一套「当前文件 + 指定题目包」的语义，
+  // 只是把编译参数换成调试版，并顺手把测试点输入接到 stdin 上。
+  async function runDebug(
+    request: vscode.TestRunRequest,
+    token: vscode.CancellationToken,
+  ): Promise<DebugResult | null> {
+    const run = controller.createTestRun(request);
+    try {
+      const targets = collect(request.include ?? rootItems());
+      const first = targets[0];
+      if (first === undefined) {
+        return null;
+      }
+
+      const document = vscode.window.activeTextEditor?.document;
+      if (document === undefined || document.uri.scheme !== 'file') {
+        errorAll(run, targets, '请先打开要调试的源码文件，再启动调试。');
+        return null;
+      }
+
+      const result = await deps.debugInPackage(
+        document,
+        first.node.pkg.rootDir,
+        firstTestId(first.node),
+      );
+      if (result.kind === 'started') {
+        run.passed(first.item);
+        run.appendOutput(
+          `调试已启动：测试点 #${result.testId}，程序 ${result.program}\r\n`,
+        );
+      } else {
+        errorAll(run, targets, result.message);
+      }
+      void token;
+      return result;
+    } finally {
+      // 只结束「测试运行」的展示；调试会话本身继续跑，用户还要在里面单步。
+      run.end();
+    }
+  }
+
+  function firstTestId(node: ItemNode): string | undefined {
+    switch (node.kind) {
+      case 'test':
+        return node.test.id;
+      case 'subtask':
+        return node.subtask.tests[0];
+      case 'problem':
+        return undefined;
+    }
+  }
+
+  const debugProfile = controller.createRunProfile(
+    '调试首测点',
+    vscode.TestRunProfileKind.Debug,
+    (request, token) => {
+      void runDebug(request, token);
+    },
+    false,
+  );
+
   // 题目包在编辑器外面被改动（git 切分支、手改 problem.json）时，把树刷新一遍。
   const watcher = vscode.workspace.createFileSystemWatcher(`**/${PROBLEM_FILE}`);
   watcher.onDidCreate(() => void discover());
@@ -262,7 +330,7 @@ export function registerTesting(deps: TestingDeps): TestingHandle {
   watcher.onDidDelete(() => void discover());
 
   return {
-    disposables: [controller, runProfile, watcher],
+    disposables: [controller, runProfile, debugProfile, watcher],
     refresh: discover,
     roots: rootItems,
     run: (items, token) => {

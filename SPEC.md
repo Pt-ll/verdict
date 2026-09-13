@@ -182,10 +182,8 @@ Verdict 是一个 VSCode 扩展：把 OI / ICPC 风格的**本地评测系统**�
 - `debug` profile：用该测试点输入启动调试会话。
 - 失败态在 Testing 侧边栏可见，可单独重跑。
 
-> 实现进度：树结构与 `run` profile 已在 M2 落地（`src/vscode/testing.ts`）。
-> `debug` profile 尚未实现——它要依赖 cpptools 与各平台调试器配置（§4.8），
-> 单独做一步比塞进 M2 里稳妥；M2 的交付清单（§12）里也只有 Testing API 本体。
-> 另外 M2 的树是「题目 > 子任务 > 测试点」，比赛那一层（§5.7）属于 M3。
+> 实现进度：树结构、`run` profile 与 `debug` profile 都已落地（`src/vscode/testing.ts`）。
+> M2 的树是「题目 > 子任务 > 测试点」，比赛那一层（§5.7）属于 M3。
 
 ### 4.5 原生 diff
 
@@ -210,6 +208,19 @@ WA 时执行 `vscode.commands.executeCommand('vscode.diff', outputUri, answerUri
 ### 4.8 调试集成
 
 `vscode.debug.startDebugging` 生成一份临时 `cppdbg`（cpptools）或 `debugpy`（Python）配置，注入首个测试点输入作为 stdin，实现「评测失败 → 一键起调试」。若用户未装对应调试扩展，给出可操作提示。
+
+实现要点（`src/core/debug/launch.ts` 生成配置，`src/vscode/debug.ts` 负责起会话）：
+
+- 调试用**调试版参数**另编一份（关优化、加 `-g` / `/Zi`），不复用评测产物：优化过的代码
+  单步会跳、变量会被优化没。编译缓存键里含编译参数，两份产物互不干扰。
+- stdin 注入：cppdbg / debugpy 都**没有**「把某个文件接到 stdin」的配置字段，只能借调试器
+  自己的命令（lldb 用 `settings set target.input-path`，gdb 用 `set inferior-tty`），
+  并标 `ignoreFailures`——两个调试器对这套命令的支持随版本而变，注入失败不该让整个会话起不来。
+  MSVC 的 `cppvsdbg` 没有对应能力，只能手动喂输入，此时把输入文件路径明确告诉用户。
+- 没装调试扩展时**提前**给出可操作提示、并直接带用户去扩展面板搜索，
+  而不是让 `startDebugging` 抛一句 "no debug adapter"。
+- 工作目录设成题目包根目录，程序读相对路径的数据文件时与出题人的预期一致
+  （评测时 cwd 继承扩展宿主，SPEC 没有规定，也就不该指望它）。
 
 ### 4.9 状态栏
 
