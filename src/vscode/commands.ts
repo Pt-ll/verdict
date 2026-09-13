@@ -10,13 +10,16 @@ import {
 } from '../core/compiler';
 import { runProcess } from '../util/process';
 import { DEFAULT_LIMITS, type ComparatorConfig, type Limits, type Verdict } from '../core/model';
-import type { CaseResult } from '../core/judge/judge';
+import type { CaseResult, SubtaskResult } from '../core/model';
 import {
   clearToolchainCache,
   judgeSourceFile,
   type EngineOptions,
   type JudgeOutcome,
 } from '../engineFacade';
+
+/** 评测成功那一支的结果，日志与状态栏都只需要它。 */
+type JudgedOutcome = Extract<JudgeOutcome, { kind: 'judged' }>;
 import type { DiagnosticsPublisher } from './diagnostics';
 import type { VerdictOutput } from './output';
 import type { VerdictStatusBar } from './statusBar';
@@ -228,6 +231,12 @@ class JudgeRunner {
       case 'no-tests': {
         const base = path.basename(sourcePath, path.extname(sourcePath));
         status.setWarning('Verdict：未找到测试数据');
+        // 题目包里没有测试点时 message 已经写清了该往哪里放数据，直接用它。
+        if (outcome.message !== undefined) {
+          output.info(outcome.message);
+          void vscode.window.showWarningMessage(`Verdict：${outcome.message}`);
+          return;
+        }
         output.info('未找到测试数据。');
         output.info(`预期位置：与源文件同名的 ${base}.in 与 ${base}.out，或同级 tests/ 目录下的 1.in / 1.out。`);
         // 故意不 await：通知的 Promise 只在用户交互或手动关闭时才 resolve，
@@ -269,23 +278,26 @@ class JudgeRunner {
         if (outcome.cancelled) {
           output.info('评测已被取消。');
         }
-        logCases(output, outcome.cases, outcome.elapsedMs, outcome.dataDir);
+        logJudged(output, outcome);
 
         const total = outcome.cases.length;
         const accepted = outcome.cases.filter((item) => item.verdict === 'AC').length;
         const worst = worstVerdict(outcome.cases);
+        // 有题目包才报分数：M1 的约定式数据每个点 1 分，「得分 1/1」只是噪音。
+        const scoreText =
+          outcome.problemId === undefined ? '' : `，得分 ${outcome.score}/${outcome.maxScore}`;
 
         if (accepted === total && total > 0) {
           status.setIdle(
             `$(beaker) AC ${accepted}/${total}`,
-            `Verdict：全部通过（${outcome.elapsedMs}ms）`,
+            `Verdict：全部通过（${outcome.elapsedMs}ms）${scoreText}`,
           );
         } else {
-          status.setWarning(`Verdict：${worst} ${accepted}/${total}`);
+          status.setWarning(`Verdict：${worst} ${accepted}/${total}${scoreText}`);
         }
 
         if (!outcome.cancelled) {
-          const summary = `Verdict：${worst} ${accepted}/${total}，用时 ${outcome.elapsedMs}ms。`;
+          const summary = `Verdict：${worst} ${accepted}/${total}${scoreText}，用时 ${outcome.elapsedMs}ms。`;
           void vscode.window.showInformationMessage(summary, '查看输出').then((choice) => {
             if (choice === '查看输出') {
               output.show();
@@ -325,25 +337,48 @@ function readEngineOptions(deps: CommandDeps): EngineOptions {
     limits,
     comparator,
     cacheDir: path.join(deps.context.globalStorageUri.fsPath, 'cache'),
+    // 题目包的向上查找以工作区为界，别让工作区外的文件一路找到用户主目录去。
+    workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
   };
 }
 
-function logCases(
-  output: VerdictOutput,
-  cases: CaseResult[],
-  elapsedMs: number,
-  dataDir: string,
-): void {
-  output.info(`测试数据目录：${dataDir}`);
-  for (const item of cases) {
+function logJudged(output: VerdictOutput, outcome: JudgedOutcome): void {
+  output.info(`测试数据目录：${outcome.dataDir}`);
+  if (outcome.problemId !== undefined) {
+    output.info(`题目包：${outcome.problemId}`);
+  }
+  for (const item of outcome.cases) {
     const memory = item.memoryKb > 0 ? `${(item.memoryKb / 1024).toFixed(1)}MB` : 'n/a';
     output.info(
       `  ${item.test}: ${item.verdict}  ${item.timeMs}ms  ${memory}` +
         (item.message !== undefined ? `  ${item.message}` : ''),
     );
   }
-  const accepted = cases.filter((item) => item.verdict === 'AC').length;
-  output.info(`评测结束：AC ${accepted} / 共 ${cases.length}，用时 ${elapsedMs}ms`);
+  const accepted = outcome.cases.filter((item) => item.verdict === 'AC').length;
+  output.info(`评测结束：AC ${accepted} / 共 ${outcome.cases.length}，用时 ${outcome.elapsedMs}ms`);
+
+  for (const subtask of outcome.subtasks) {
+    output.info(
+      `  子任务 ${subtask.id}：${subtask.score}/${subtask.maxScore} 分（${subtaskStatusText(subtask.status)}）`,
+    );
+  }
+  if (outcome.problemId !== undefined) {
+    output.info(`得分：${outcome.score} / ${outcome.maxScore}`);
+  }
+}
+
+function subtaskStatusText(status: SubtaskResult['status']): string {
+  switch (status) {
+    case 'full':
+      return '满分';
+    case 'partial':
+      return '部分分';
+    case 'none':
+      return '未得分';
+    case 'skipped':
+      // 说清楚是「没跑」而不是「跑了没分」，这两件事对选手的意义完全不同。
+      return '依赖未满足，已跳过';
+  }
 }
 
 const VERDICT_PRIORITY: Verdict[] = ['UKE', 'RE', 'MLE', 'OLE', 'TLE', 'WA', 'PC', 'CE', 'AC'];

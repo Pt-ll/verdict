@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { TestCase } from '../model';
+import { isFile } from '../../util/files';
 
 const INPUT_EXTENSION = '.in';
 const ANSWER_EXTENSIONS = ['.out', '.ans', '.expected'];
@@ -105,12 +106,4 @@ async function findSiblingPair(
     }
   }
   return null;
-}
-
-async function isFile(target: string): Promise<boolean> {
-  try {
-    return (await fs.promises.stat(target)).isFile();
-  } catch {
-    return false;
-  }
 }

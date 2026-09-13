@@ -12,6 +12,7 @@ import {
 } from '../model';
 import { scanTests } from './scan';
 import { topoOrderSubtasks } from './subtasks';
+import { isFile } from '../../util/files';
 
 export const PROBLEM_FILE = 'problem.json';
 export const PROBLEM_JSON_VERSION = 1;
@@ -523,14 +524,6 @@ function readStringArray(value: unknown, label: string, issues: ProblemIssues): 
     result.push(text);
   }
   return result;
-}
-
-async function isFile(target: string): Promise<boolean> {
-  try {
-    return (await fs.promises.stat(target)).isFile();
-  } catch {
-    return false;
-  }
 }
 
 function describe(value: unknown): string {

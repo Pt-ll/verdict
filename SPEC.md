@@ -421,11 +421,33 @@ export interface ProblemResult {
 }
 
 export class Judge {
-  constructor(opts: JudgeOptions, sandbox: Sandbox, compiler: Toolchain);
-  judgeProblem(problem: Problem, runCmd: { cmd: string; args: string[] },
-               token?: CancellationTokenLike): Promise<ProblemResult>;
+  constructor(sandbox: Sandbox, options: { limits: Limits; comparator: ComparatorConfig });
+  judgeCase(test: JudgeCaseInput, token?: CancellationTokenLike): Promise<CaseResult>;
 }
+
+/** 题目级评测：逐测试点跑完，再按子任务计分。 */
+export function judgeProblem(
+  pkg: ProblemPackage,
+  runCmd: { cmd: string; args: string[] },
+  sandbox: Sandbox,
+  token?: CancellationTokenLike,
+  onProgress?: (stage: string) => void,
+): Promise<ProblemResult>;
+
+/** 计分单独成模块，纯函数、可单测（src/core/judge/score.ts）。 */
+export function scoreProblem(problem: Problem, cases: CaseResult[]): {
+  subtasks: SubtaskResult[];
+  score: number;
+  maxScore: number;
+};
 ```
+
+与上面草图的差异（实现以本节为准）：
+
+- `judgeProblem` 收 `ProblemPackage` 而不是 `Problem`：测试点路径相对题目包根目录，
+  没有 `rootDir` 就还原不出绝对路径。
+- 预热（§9）不在这里做：那是「编译产物是不是新写的」这类知识，属于上层 `engineFacade`。
+- 不属于任何子任务的测试点直接计入总分，不会因为加了子任务就凭空消失。
 
 判定流程（单测试点）：
 
@@ -600,6 +622,16 @@ export function splitmix64(seed: bigint): Rng;
   "answerDir": "players/*/A"
 }
 ```
+
+字段说明（实现见 `src/core/problem/package.ts`；加载时校验，一次列出全部问题）：
+
+- `tests` 可以省略（或写 `[]`）：此时扫描 `data/` 下的 `1.in/1.out`、`*.ans`、`sample*` 等命名约定，
+  按数字序排列（`2` 排在 `10` 前）。测试点路径一律相对**题目包根目录**，即写成 `data/1.in`。
+- 子任务成员关系以 `subtasks[].tests` 为准；只有它是空的时候，才用测试点的 `subtask` 字段补出来。
+  两边说法不一致会直接报错——宁可让人改一处配置，也不要悄悄按其中一个算分。
+- 非法数值、引用不存在的测试点或子任务、依赖成环、重复 id、空子任务，都会在加载时报错。
+- `limits.procCount`（§5.1 标为「尽力而为」）本版没有实现：写了会明确报错，不静默忽略。
+- 未知字段原样保留在 `_raw` 里，写回时先摊开它再覆盖已知字段，因此 round-trip 不丢字段（§6.5）。
 
 ### 6.4 比较配置示例
 

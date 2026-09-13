@@ -4,10 +4,14 @@ import type {
   CaseResult,
   ComparatorConfig,
   Limits,
+  ProblemResult,
   RunVerdict,
   Verdict,
 } from '../model';
+import { resolveTestPath, type ProblemPackage } from '../problem/package';
 import type { RunCommand, RunResult, Sandbox } from '../sandbox/sandbox';
+import { readFileOrNull } from '../../util/files';
+import { scoreProblem } from './score';
 
 // CaseResult 住在 model.ts（它是最基础的数据模型，score.ts 与 UI 都要用），
 // 这里转出去是为了不打断已有的 `from '../core/judge/judge'` 导入。
@@ -141,4 +145,72 @@ function firstLine(buffer: Buffer): string {
     return '';
   }
   return line.length > 200 ? `${line.slice(0, 200)}…` : line;
+}
+
+/**
+ * 评测整个题目包：逐测试点运行，最后按子任务计分（SPEC §5.5）。
+ *
+ * 签名比 SPEC §5.5 的草图多收一个 ProblemPackage：测试点路径是相对题目包根目录的，
+ * 得先有 rootDir 才能还原成绝对路径。限制与比较方式一律以题目包为准（SPEC §7.1）。
+ *
+ * 预热不在这里做：那是「产物是不是刚编译出来的」这类知识，属于上层，见 engineFacade 的 prepareRun。
+ */
+export async function judgeProblem(
+  pkg: ProblemPackage,
+  runCmd: RunCommand,
+  sandbox: Sandbox,
+  token?: CancellationTokenLike,
+  onProgress?: (stage: string) => void,
+): Promise<ProblemResult> {
+  const startedAt = Date.now();
+  const judge = new Judge(sandbox, {
+    limits: pkg.problem.limits,
+    comparator: pkg.problem.comparator,
+  });
+
+  const cases: CaseResult[] = [];
+  for (const test of pkg.problem.tests) {
+    if (token?.isCancellationRequested === true) {
+      break;
+    }
+
+    onProgress?.(`评测 ${test.id}（${cases.length + 1}/${pkg.problem.tests.length}）`);
+    const { inputPath, answerPath } = resolveTestPath(pkg, test);
+    const input = await readFileOrNull(inputPath);
+    const answer = await readFileOrNull(answerPath);
+
+    if (input === null || answer === null) {
+      cases.push({
+        test: test.id,
+        verdict: 'UKE',
+        score: 0,
+        timeMs: 0,
+        memoryKb: 0,
+        exitCode: null,
+        signal: null,
+        // 数据读不到是评测环境的问题，不是选手程序的错；写清是哪个文件读不到。
+        message: `无法读取测试数据：${input === null ? inputPath : answerPath}`,
+        output: Buffer.alloc(0),
+        answer: answer ?? Buffer.alloc(0),
+      });
+      continue;
+    }
+
+    cases.push(
+      await judge.judgeCase(
+        { testId: test.id, input, answer, runCmd, points: test.points },
+        token,
+      ),
+    );
+  }
+
+  const scored = scoreProblem(pkg.problem, cases);
+  return {
+    problem: pkg.problem.id,
+    score: scored.score,
+    maxScore: scored.maxScore,
+    cases,
+    subtasks: scored.subtasks,
+    elapsedMs: Date.now() - startedAt,
+  };
 }

@@ -155,3 +155,151 @@ describe('engineFacade：找不到测试数据', () => {
     }
   });
 });
+
+describe('engineFacade：题目包', () => {
+  const problemRoot = path.join(root, 'problems', 'A');
+  const packageSource = path.join(problemRoot, 'solve.cpp');
+
+  function writePackage(files: Record<string, string>): void {
+    fs.rmSync(problemRoot, { recursive: true, force: true });
+    for (const [relative, text] of Object.entries(files)) {
+      const target = path.join(problemRoot, relative);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, text);
+    }
+  }
+
+  async function judgePackage(): Promise<JudgeOutcome> {
+    fs.writeFileSync(packageSource, SUM_PROGRAM);
+    return judgeSourceFile(packageSource, options());
+  }
+
+  it('源文件在题目包里时按题目包评测，而不是旁边同名的 .in/.out', async () => {
+    if (!available) {
+      return;
+    }
+    writePackage({
+      'problem.json': JSON.stringify({
+        id: 'A',
+        name: 'A. 求和',
+        limits: { timeMs: 5000, memoryMb: 256, stackMb: 256, outputKb: 4096 },
+        tests: [
+          { id: '1', input: 'data/1.in', answer: 'data/1.out', points: 30 },
+          { id: '2', input: 'data/2.in', answer: 'data/2.out', points: 70 },
+        ],
+      }),
+      'data/1.in': '1 2\n',
+      'data/1.out': '3\n',
+      'data/2.in': '4 5\n',
+      'data/2.out': '9\n',
+      // 同名的一对也在，但题目包优先，所以它不该被用上。
+      'solve.in': '1 2\n',
+      'solve.out': '3\n',
+    });
+
+    const outcome = await judgePackage();
+
+    if (outcome.kind !== 'judged') {
+      throw new Error(`期望 judged，实际 ${outcome.kind}`);
+    }
+    expect(outcome.problemId).toBe('A');
+    expect(outcome.cases.map((item) => item.test)).toEqual(['1', '2']);
+    expect(outcome.cases.map((item) => item.verdict)).toEqual(['AC', 'AC']);
+    expect(outcome.score).toBe(100);
+    expect(outcome.maxScore).toBe(100);
+    expect(outcome.subtasks).toEqual([]);
+  });
+
+  it('依赖未满分时，后继子任务被 skip 并计 0 分（M2 验收点）', async () => {
+    if (!available) {
+      return;
+    }
+    writePackage({
+      'problem.json': JSON.stringify({
+        id: 'A',
+        limits: { timeMs: 5000 },
+        subtasks: [
+          { id: '1', points: 30, tests: ['1'], dependsOn: [], scoring: 'min' },
+          { id: '2', points: 70, tests: ['2'], dependsOn: ['1'], scoring: 'min' },
+        ],
+        tests: [
+          { id: '1', input: 'data/1.in', answer: 'data/1.out', points: 30, subtask: '1' },
+          { id: '2', input: 'data/2.in', answer: 'data/2.out', points: 70, subtask: '2' },
+        ],
+      }),
+      // 第 1 组故意对不上：它挂了，于是依赖它的第 2 组应当被跳过。
+      'data/1.in': '1 2\n',
+      'data/1.out': '999\n',
+      // 第 2 组本身是对的，但不该因此拿到分。
+      'data/2.in': '4 5\n',
+      'data/2.out': '9\n',
+    });
+
+    const outcome = await judgePackage();
+
+    if (outcome.kind !== 'judged') {
+      throw new Error(`期望 judged，实际 ${outcome.kind}`);
+    }
+    expect(outcome.cases.map((item) => item.verdict)).toEqual(['WA', 'AC']);
+    expect(outcome.subtasks).toEqual([
+      { id: '1', score: 0, maxScore: 30, status: 'none' },
+      { id: '2', score: 0, maxScore: 70, status: 'skipped' },
+    ]);
+    expect(outcome.score).toBe(0);
+    expect(outcome.maxScore).toBe(100);
+  });
+
+  it('限制以题目包为准，而不是编辑器设置', async () => {
+    if (!available) {
+      return;
+    }
+    writePackage({
+      'problem.json': JSON.stringify({
+        id: 'A',
+        // 题目包的时限宽裕得多；如果实现错误地用了设置里的 50ms，这个程序会被判 TLE。
+        limits: { timeMs: 5000 },
+        tests: [{ id: '1', input: 'data/1.in', answer: 'data/1.out' }],
+      }),
+      'data/1.in': '1 2\n',
+      'data/1.out': '3\n',
+    });
+    // 算完之后空转到 300ms：设置里的 50ms 一定不够，题目包的 5000ms 绰绰有余。
+    fs.writeFileSync(
+      packageSource,
+      [
+        '#include <cstdio>',
+        '#include <chrono>',
+        'int main() {',
+        '  int a = 0, b = 0;',
+        '  if (std::scanf("%d %d", &a, &b) != 2) return 1;',
+        '  std::printf("%d\\n", a + b);',
+        '  const auto deadline =',
+        '      std::chrono::steady_clock::now() + std::chrono::milliseconds(300);',
+        '  while (std::chrono::steady_clock::now() < deadline) {}',
+        '  return 0;',
+        '}',
+        '',
+      ].join('\n'),
+    );
+
+    const outcome = await judgeSourceFile(packageSource, options({ timeMs: 50 }));
+
+    if (outcome.kind !== 'judged') {
+      throw new Error(`期望 judged，实际 ${outcome.kind}`);
+    }
+    expect(outcome.cases[0]?.verdict).toBe('AC');
+  });
+
+  it('题目包里还没有数据时，提示该往哪里放，而不是含糊的「未找到测试数据」', async () => {
+    writePackage({ 'problem.json': JSON.stringify({ id: 'A' }) });
+
+    const outcome = await judgePackage();
+
+    expect(outcome.kind).toBe('no-tests');
+    if (outcome.kind !== 'no-tests') {
+      return;
+    }
+    expect(outcome.message).toContain('还没有测试点');
+    expect(outcome.message).toContain(path.join(problemRoot, 'data'));
+  });
+});
