@@ -85,6 +85,10 @@ pnpm package && vsce publish --packagePath dist/verdict-0.0.2.vsix
 
 如果你的用户里有不用官方 VS Code 的人，值得再发一份：
 
+**这条路也是「官方市场卡住时的应急出口」**：它完全不碰微软账号，用 GitHub 登录即可。
+如果路线 A 卡在 Azure DevOps 的鉴权或后台报错上（见文末「真实遇到过的两类报错」），
+先把这一份发出去——**同一份 VSIX，两边都收**，不用重新打包，官方市场能用了再补上。
+
 1. 用 GitHub 账号登录 <https://open-vsx.org> **[你来]**
 2. 右上角头像 → Settings → Access Tokens → 生成 **[你来]**
 3. 发布：
