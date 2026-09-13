@@ -1,6 +1,7 @@
 import { createComparator, type Comparator } from '../compare/compare';
 import type {
   CancellationTokenLike,
+  CaseResult,
   ComparatorConfig,
   Limits,
   RunVerdict,
@@ -8,20 +9,9 @@ import type {
 } from '../model';
 import type { RunCommand, RunResult, Sandbox } from '../sandbox/sandbox';
 
-export interface CaseResult {
-  test: string;
-  verdict: Verdict;
-  score: number;
-  timeMs: number;
-  memoryKb: number;
-  exitCode: number | null;
-  signal: string | null;
-  message?: string;
-  /** 实际输出与答案，供 diff 与报告使用（SPEC 未定义，M2 的 diff 需要）。 */
-  output: Buffer;
-  answer: Buffer;
-  firstDiffLine?: number;
-}
+// CaseResult 住在 model.ts（它是最基础的数据模型，score.ts 与 UI 都要用），
+// 这里转出去是为了不打断已有的 `from '../core/judge/judge'` 导入。
+export type { CaseResult };
 
 export interface JudgeCaseInput {
   testId: string;
