@@ -19,6 +19,19 @@
 
 ### 安装
 
+**已经发布在 Open VSX**（VSCodium / Gitpod / Theia 等用的源）：
+
+| 从哪里装 | 怎么做 |
+| --- | --- |
+| VSCodium / Gitpod / Theia 等 Open VSX 源 | 扩展面板里搜 `Verdict` |
+| 任何编辑器（手动） | 下载 [VSIX](https://open-vsx.org/extension/YuChenZhong/verdict)，再 `code --install-extension <文件>` |
+| 本仓库的开发版 | `pnpm package` 之后装 `dist/verdict-<版本>.vsix` |
+
+**VS Code 官方市场还没发布**（发布流程卡在微软的 Azure DevOps 鉴权上，进展记在 `PUBLISHING.md`）。
+两边用的是同一个包，官方市场补发时不用重新打包。
+
+本仓库内打包与安装：
+
 ```bash
 pnpm package                                                    # 生成 dist/verdict-0.0.1.vsix
 code --install-extension dist/verdict-0.0.1.vsix                # 安装

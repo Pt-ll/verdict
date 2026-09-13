@@ -148,5 +148,8 @@ Azure DevOps 服务端的内部错误，与你的操作、与扩展本身都无�
 
 - `pnpm package` 产出的 VSIX 已在本机用 `code --install-extension` 装过一次，确认官方安装器
   接受它的清单（装完已卸载）。
-- 但**还没有发布到市场**：上面标了 **[你来]** 的步骤都需要你的账号与浏览器操作。
+- **Open VSX：已发布 0.0.1**（命名空间 `YuChenZhong`，2026-09-13）。未认证（要求命名空间与
+  GitHub 用户名一致），不影响安装。页面：<https://open-vsx.org/extension/YuChenZhong/verdict>。
+- **官方市场：尚未发布**。`marketplace.visualstudio.com/items?itemName=YuChenZhong.verdict`
+  现在还是 404。卡点在 Azure DevOps 鉴权（见上文两类报错），publisher 已创建。
 - 发布前建议先确认三平台 CI 全绿，再升一次 `version`。
