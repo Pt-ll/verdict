@@ -147,6 +147,13 @@ export interface ProblemResult {
   cases: CaseResult[];
   subtasks: SubtaskResult[];
   elapsedMs: number;
+  /**
+   * 只跑了一部分测试点。
+   *
+   * 面板上单点「运行」就是这样：分数只按跑过的那部分算，是个下界而不是结论，
+   * 所以调用方必须显式区分，不能把它当成整题的得分展示。
+   */
+  partial?: boolean;
 }
 
 export interface Contestant {

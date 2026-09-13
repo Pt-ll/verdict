@@ -82,6 +82,7 @@ async function run() {
   await checkCompileError(api, folder.uri);
   await checkDiff();
   await checkProblemPackage(api, folder.uri);
+  await checkControlPanel(api, folder.uri);
   await checkDebug(api, folder.uri);
   await checkContest(api);
 
@@ -169,6 +170,80 @@ function childrenOf(item) {
   const items = [];
   item.children.forEach((child) => items.push(child));
   return items;
+}
+
+/**
+ * 侧边栏面板（SPEC §4.12）。
+ *
+ * 面板不在编辑器区，没有标签页可以找，DOM 也读不到；但面板的**数据与动作**都走
+ * 同一个入口（dispatchPanel 就是 webview 里 postMessage 过来的那条消息）。
+ * 所以这里验的是它背后的真东西：状态采集、单点运行、以及「改完立刻落盘」。
+ */
+async function checkControlPanel(api, root) {
+  assert.equal(typeof api.dispatchPanel, 'function', 'activate() 应当暴露 dispatchPanel');
+  assert.equal(typeof api.panelState, 'function', 'activate() 应当暴露 panelState');
+
+  await api.dispatchPanel({ type: 'refresh' });
+  const state = api.panelState();
+  assert.ok(state, '刷新之后应当拿到面板状态');
+  assert.equal(state.contest && state.contest.id, 'demo', '面板应当显示工作区里的比赛');
+  assert.ok(
+    state.problems.some((item) => item.id === 'A') && state.problems.some((item) => item.id === 'B'),
+    `面板应当列出工作区里的题目，实际：${state.problems.map((item) => item.id).join('、')}`,
+  );
+
+  await api.dispatchPanel({ type: 'selectProblem', problemId: 'A' });
+  const selected = api.panelState().selected;
+  assert.ok(selected, '选中题目之后应当有题目详情');
+  assert.equal(selected.id, 'A');
+  assert.deepEqual(
+    selected.subtasks.map((item) => item.name),
+    ['小数据', '大数据'],
+    '面板应当按子任务分组显示测试点',
+  );
+  assert.deepEqual(
+    selected.tests.map((item) => item.id),
+    ['1', '2'],
+  );
+  // 上一步（checkProblemPackage）刚用 bob 的程序跑过整题，面板应当看得到那份结果。
+  assert.equal(selected.tests[0].verdict, 'AC', '面板里的测试点状态应当来自最近一次评测');
+  console.log('[verdict] 侧边栏面板：读到比赛与题目，测试点带上了最近一次的判定');
+
+  // 单点运行：面板上的「▶」就是这条消息。跑完之后 1 号点的结果要更新，
+  // 而 2 号点的结果不能被抹掉（面板的合并逻辑就是为这个写的）。
+  await openSource(root, 'players/alice/A.cpp');
+  await api.dispatchPanel({ type: 'judgeCase', testId: '1' });
+  const afterOne = api.panelState().selected;
+  assert.equal(afterOne.tests[0].verdict, 'AC', `单点运行应当更新 1 号点，实际 ${afterOne.tests[0].verdict}`);
+  assert.ok(
+    afterOne.tests[1].verdict !== null,
+    '只跑一个点不该把另一个点的结果清掉',
+  );
+  console.log('[verdict] 侧边栏面板：单点运行只更新那一个测试点');
+
+  // 编辑要落到 problem.json（面板不另存一份数据），并且改完还加载得回来。
+  const before = selected.subtasks[0].points;
+  const file = path.join(root.fsPath, '.verdict', 'problems', 'A', 'problem.json');
+  // saveProblem 会按自己的排版重写整个文件，所以这里逐字节留一份原件再还原：
+  // 样例数据是仓库里给人看的（紧凑写法），不该因为跑了一次集成测试就变成另一种排版。
+  const original = fs.readFileSync(file, 'utf8');
+  try {
+    await api.dispatchPanel({
+      type: 'updateSubtask',
+      subtaskId: '1',
+      patch: { points: before + 5 },
+    });
+    const edited = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.equal(
+      edited.subtasks[0].points,
+      before + 5,
+      '面板上的编辑应当立刻写进 problem.json',
+    );
+  } finally {
+    fs.writeFileSync(file, original, 'utf8');
+  }
+  assert.equal(fs.readFileSync(file, 'utf8'), original, '样例数据要逐字节还原');
+  console.log('[verdict] 侧边栏面板：编辑直接落盘到 problem.json，样例数据已还原');
 }
 
 async function openSource(root, relative) {

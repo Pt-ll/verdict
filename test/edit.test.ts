@@ -2,11 +2,19 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { DEFAULT_LIMITS, type Problem, type TestCase } from '../src/core/model';
+import { DEFAULT_LIMITS, type Problem, type Subtask, type TestCase } from '../src/core/model';
 import {
+  addSubtask,
   clearSubtasks,
   evenSubtasks,
+  nextSubtaskId,
   planAddTests,
+  removeSubtask,
+  removeTest,
+  setTestSubtask,
+  updateSubtask,
+  validateLimits,
+  withComparator,
   withLimits,
 } from '../src/core/problem/edit';
 import { PROBLEM_FILE, loadProblem, saveProblem } from '../src/core/problem/package';
@@ -42,6 +50,21 @@ function problemOf(tests: TestCase[]): Problem {
     comparator: { mode: 'default' },
     subtasks: [],
     tests,
+  };
+}
+
+function withSubtasks(problem: Problem, subtasks: Subtask[]): Problem {
+  // 测试点上的 subtask 字段要跟着子任务走，否则加载期会因「两边不一致」报错。
+  const owner = new Map(
+    subtasks.flatMap((subtask) => subtask.tests.map((testId) => [testId, subtask.id] as const)),
+  );
+  return {
+    ...problem,
+    subtasks,
+    tests: problem.tests.map((test) => {
+      const id = owner.get(test.id);
+      return id === undefined ? test : { ...test, subtask: id };
+    }),
   };
 }
 
@@ -188,5 +211,112 @@ describe('编辑后能重新读回来', () => {
     expect(reloaded.problem.tests.map((test) => test.id)).toEqual(['1', '2']);
     expect(reloaded.problem.subtasks.map((item) => item.tests)).toEqual([['1'], ['2']]);
     expect(reloaded.problem.subtasks.map((item) => item.points)).toEqual([50, 50]);
+  });
+
+  /**
+   * 面板上的每次编辑都会立刻落盘，所以「改完还读得回来」是硬要求：
+   * loadProblem 会校验成员关系一致、依赖不成环、子任务不为空——只要有一条不满足，
+   * 用户下次打开题目包就会看到加载失败，那比不让改还糟。
+   */
+  it('面板的编辑（加子任务 / 移归属 / 删子任务 / 移出测试点）都能重新读回来', async () => {
+    const dir = makePackage({
+      [PROBLEM_FILE]: JSON.stringify({
+        id: 'A',
+        tests: [
+          { id: '1', input: 'data/1.in', answer: 'data/1.out' },
+          { id: '2', input: 'data/2.in', answer: 'data/2.out' },
+          { id: '3', input: 'data/3.in', answer: 'data/3.out' },
+        ],
+      }),
+      'data/1.in': '1\n',
+      'data/1.out': '1\n',
+      'data/2.in': '2\n',
+      'data/2.out': '2\n',
+      'data/3.in': '3\n',
+      'data/3.out': '3\n',
+    });
+    const pkg = await loadProblem(dir);
+
+    let problem = addSubtask(pkg.problem, 30);
+    expect(problem.subtasks.map((item) => item.id)).toEqual(['1']);
+    expect(problem.subtasks[0]?.tests).toEqual(['1']);
+
+    problem = addSubtask(problem, 70);
+    problem = setTestSubtask(problem, '3', '2');
+    problem = updateSubtask(problem, '2', { points: 60, scoring: 'sum', dependsOn: ['1'] });
+    problem = removeTest(problem, '2');
+    await saveProblem({ ...pkg, problem });
+
+    const reloaded = await loadProblem(dir);
+    expect(reloaded.problem.tests.map((test) => test.id)).toEqual(['1', '3']);
+    expect(reloaded.problem.subtasks.map((item) => item.id)).toEqual(['1', '2']);
+    expect(reloaded.problem.subtasks[1]?.tests).toEqual(['3']);
+    expect(reloaded.problem.subtasks[1]?.dependsOn).toEqual(['1']);
+    expect(reloaded.problem.subtasks[1]?.scoring).toBe('sum');
+    expect(reloaded.problem.subtasks[1]?.points).toBe(60);
+
+    // 删掉被依赖的那个子任务：依赖要跟着摘掉，否则下一次加载会因为
+    // 「依赖了不存在的子任务」直接报错。
+    await saveProblem({ ...pkg, problem: removeSubtask(reloaded.problem, '1') });
+    const again = await loadProblem(dir);
+    expect(again.problem.subtasks.map((item) => item.id)).toEqual(['2']);
+    expect(again.problem.subtasks[0]?.dependsOn).toEqual([]);
+    // 它名下的测试点保留，只是不再属于任何子任务。
+    expect(again.problem.tests.map((test) => test.subtask ?? null)).toEqual([null, '2']);
+  });
+});
+
+describe('子任务与测试点的编辑规则', () => {
+  it('id 取「最大已用编号 + 1」，删掉中间一个也不会撞车', () => {
+    const problem = withSubtasks(problemOf([testOf('1')]), [
+      { id: '1', points: 10, tests: ['1'], dependsOn: [], scoring: 'min' },
+      { id: '3', points: 10, tests: [], dependsOn: [], scoring: 'min' },
+    ]);
+    expect(nextSubtaskId(problem)).toBe('4');
+  });
+
+  it('新建子任务会先认领一个还没归属的测试点（空子任务是非法的）', () => {
+    const problem = withSubtasks(problemOf([testOf('1'), testOf('2')]), [
+      { id: '1', points: 10, tests: ['1'], dependsOn: [], scoring: 'min' },
+    ]);
+    const next = addSubtask(problem, 20);
+    expect(next.subtasks[1]?.tests).toEqual(['2']);
+    expect(next.tests.find((test) => test.id === '2')?.subtask).toBe('2');
+  });
+
+  it('没有测试点时不让加子任务', () => {
+    expect(() => addSubtask(problemOf([]), 10)).toThrow(/还没有测试点/);
+  });
+
+  it('依赖成环、依赖自己、依赖不存在的子任务都会被挡下', () => {
+    const problem = withSubtasks(problemOf([testOf('1'), testOf('2')]), [
+      { id: '1', points: 50, tests: ['1'], dependsOn: [], scoring: 'min' },
+      { id: '2', points: 50, tests: ['2'], dependsOn: [], scoring: 'min' },
+    ]);
+    expect(() => updateSubtask(problem, '1', { dependsOn: ['1'] })).toThrow(/不能依赖自己/);
+    expect(() => updateSubtask(problem, '1', { dependsOn: ['9'] })).toThrow(/不存在/);
+
+    const chained = updateSubtask(problem, '2', { dependsOn: ['1'] });
+    expect(() => updateSubtask(chained, '1', { dependsOn: ['2'] })).toThrow(/成环/);
+  });
+
+  it('移出没有登记的测试点会报错，而不是悄悄什么都不做', () => {
+    expect(() => removeTest(problemOf([testOf('1')]), '9')).toThrow(/找不到测试点/);
+  });
+
+  it('限制的校验说清是哪一项不合法', () => {
+    expect(validateLimits({ timeMs: 0 })).toMatch(/时间限制/);
+    expect(validateLimits({ memoryMb: -1 })).toMatch(/内存限制/);
+    expect(validateLimits({ outputKb: 0 })).toBeNull();
+    expect(validateLimits({ timeMs: 1000.5 })).toMatch(/整数/);
+  });
+
+  it('换比较方式时带上新配置，不残留旧的 spj 路径', () => {
+    const problem: Problem = {
+      ...problemOf([testOf('1')]),
+      comparator: { mode: 'spj', spj: 'extra/checker.cpp' },
+    };
+    const switched = withComparator(problem, { mode: 'real', absEps: 1e-9, relEps: 1e-9 });
+    expect(switched.comparator).toEqual({ mode: 'real', absEps: 1e-9, relEps: 1e-9 });
   });
 });

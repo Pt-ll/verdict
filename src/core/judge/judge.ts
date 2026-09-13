@@ -235,6 +235,13 @@ export interface ProblemJudgeContext {
   cacheDir: string;
   /** testlib.h 所在目录；null / 不给表示没找到（SPEC §6.6）。 */
   testlibDir?: string | null;
+  /**
+   * 只跑这些测试点（面板上点单个测试点的「运行」时用）。
+   *
+   * 缺省跑全部；只跑一部分时结果会标 partial：分数只按跑过的那部分算，
+   * 是个下界而不是结论，调用方得显式区分。
+   */
+  onlyTestIds?: string[];
 }
 
 export async function judgeProblem(
@@ -269,13 +276,18 @@ export async function judgeProblem(
     ...(prepared.interactive === undefined ? {} : { interactive: prepared.interactive }),
   });
 
+  const tests =
+    ctx.onlyTestIds === undefined
+      ? pkg.problem.tests
+      : pkg.problem.tests.filter((test) => ctx.onlyTestIds?.includes(test.id) === true);
+
   const cases: CaseResult[] = [];
-  for (const test of pkg.problem.tests) {
+  for (const test of tests) {
     if (token?.isCancellationRequested === true) {
       break;
     }
 
-    onProgress?.(`评测 ${test.id}（${cases.length + 1}/${pkg.problem.tests.length}）`);
+    onProgress?.(`评测 ${test.id}（${cases.length + 1}/${tests.length}）`);
     const { inputPath, answerPath } = resolveTestPath(pkg, test);
     const input = await readFileOrNull(inputPath);
     const answer = await readFileOrNull(answerPath);
@@ -313,5 +325,6 @@ export async function judgeProblem(
     cases,
     subtasks: scored.subtasks,
     elapsedMs: Date.now() - startedAt,
+    ...(ctx.onlyTestIds === undefined ? {} : { partial: true }),
   };
 }

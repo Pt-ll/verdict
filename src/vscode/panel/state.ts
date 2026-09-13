@@ -1,0 +1,352 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as vscode from 'vscode';
+import { findContestRoot, loadContest } from '../../core/contest/contest';
+import { scoreProblem } from '../../core/judge/score';
+import type {
+  ComparatorConfig,
+  Limits,
+  ProblemType,
+  SubtaskResult,
+  Verdict,
+} from '../../core/model';
+import { loadProblem } from '../../core/problem/package';
+import type { CaseDocumentStore } from '../caseDocs';
+import { activeProblemRoot, discoverProblemRoots, workspaceRoot } from '../workspace';
+
+/** 单个测试点在面板上的样子：登记信息 + 最近一次评测的结论 + 可以展开看的文本。 */
+export interface PanelTest {
+  id: string;
+  input: string;
+  answer: string;
+  points: number;
+  subtask: string | null;
+  verdict: Verdict | null;
+  timeMs: number | null;
+  memoryKb: number | null;
+  message: string;
+  firstDiffLine: number | null;
+  /** 下面三段都是截断后的文本，只够人眼看一眼，不是数据源。 */
+  inputText: string;
+  expectedText: string;
+  outputText: string;
+  hasData: boolean;
+}
+
+export interface PanelSubtask {
+  id: string;
+  name: string;
+  points: number;
+  tests: string[];
+  dependsOn: string[];
+  scoring: 'min' | 'sum';
+  result: SubtaskResult | null;
+}
+
+export interface PanelProblemSummary {
+  id: string;
+  name: string;
+  type: ProblemType;
+  rootDir: string;
+  testCount: number;
+  maxScore: number;
+  subtaskCount: number;
+  /** 题目包读不出来时的原因（problem.json 写坏了）；有它就别再显示别的细节。 */
+  broken: string | null;
+}
+
+export interface PanelProblemDetail {
+  id: string;
+  name: string;
+  type: ProblemType;
+  rootDir: string;
+  limits: Limits;
+  comparator: ComparatorConfig;
+  subtasks: PanelSubtask[];
+  tests: PanelTest[];
+  /** 不属于任何子任务的测试点 id（它们也计入总分）。 */
+  orphanTests: string[];
+  score: number;
+  maxScore: number;
+  /** 结果没覆盖全部测试点（例如只跑了一个点）：分数是下界，不是结论。 */
+  partial: boolean;
+}
+
+export interface PanelStandings {
+  problems: { id: string; name: string }[];
+  contestants: { id: string; name: string }[];
+  ranks: { contestant: string; rank: number; score: number }[];
+  cells: {
+    contestant: string;
+    problem: string;
+    score: number;
+    verdict: Verdict | null;
+    rejudgeCount: number;
+  }[];
+}
+
+export interface PanelSource {
+  path: string;
+  name: string;
+  dirty: boolean;
+  /** 扩展认识这个后缀（能编译或解释运行），否则「评测」按钮只能是灰的。 */
+  judgeable: boolean;
+}
+
+export interface PanelState {
+  contest: {
+    id: string;
+    title: string;
+    maxRejudge: number;
+    contestants: { id: string; name: string }[];
+    problemIds: string[];
+  } | null;
+  problems: PanelProblemSummary[];
+  selected: PanelProblemDetail | null;
+  source: PanelSource | null;
+  standings: PanelStandings | null;
+  busy: string | null;
+  notice: { level: 'info' | 'warn' | 'error'; text: string } | null;
+}
+
+export interface PanelStateDeps {
+  caseDocs: CaseDocumentStore;
+  /** 比赛榜单；没有比赛时给 null。 */
+  standings: () => PanelStandings | null;
+}
+
+/** 展开区里最多放这么多字符：面板是给人扫一眼的，不是看全文的地方。 */
+const CLIP_CHARS = 4000;
+
+const SOURCE_EXTENSIONS = new Set(['.c', '.cc', '.cpp', '.cxx', '.c++', '.py']);
+
+/**
+ * 收集面板要展示的全部数据。
+ *
+ * 每次都从磁盘重读：problem.json / contest.json 随时可能被手改或被 git 换掉，
+ * 面板攥着一份可能过期的副本，会让人对着屏幕上的旧分数做决定。
+ */
+export async function collectPanelState(
+  deps: PanelStateDeps,
+  selectedProblemId: string | null,
+  extras: { busy: string | null; notice: PanelState['notice'] },
+): Promise<PanelState> {
+  const root = workspaceRoot();
+  const contest = await loadContestSummary(root);
+  const roots = await discoverProblemRoots();
+
+  const problems: PanelProblemSummary[] = [];
+  for (const dir of roots) {
+    problems.push(await summarize(dir));
+  }
+  // 比赛里列了、但题目包不在工作区里（比如还没创建）的题也要出现，
+  // 否则面板上的题目列表和 contest.json 说的对不上。
+  for (const id of contest?.problemIds ?? []) {
+    if (!problems.some((item) => item.id === id)) {
+      problems.push({
+        id,
+        name: id,
+        type: 'traditional',
+        rootDir: '',
+        testCount: 0,
+        maxScore: 0,
+        subtaskCount: 0,
+        broken: '还没有这个题目包（problem.json 不存在）',
+      });
+    }
+  }
+
+  const selectedId = await pickSelection(selectedProblemId, problems, roots);
+  const selected =
+    selectedId === null ? null : await detail(selectedId, problems, deps.caseDocs);
+
+  return {
+    contest,
+    problems,
+    selected,
+    source: activeSource(),
+    standings: deps.standings(),
+    busy: extras.busy,
+    notice: extras.notice,
+  };
+}
+
+async function loadContestSummary(root: string | undefined): Promise<PanelState['contest']> {
+  if (root === undefined) {
+    return null;
+  }
+  const contestRoot = await findContestRoot(root, root);
+  if (contestRoot === null) {
+    return null;
+  }
+  try {
+    const pkg = await loadContest(contestRoot);
+    return {
+      id: pkg.contest.id,
+      title: pkg.contest.title,
+      maxRejudge: pkg.contest.maxRejudge,
+      contestants: pkg.contest.contestants.map((item) => ({
+        id: item.id,
+        name: item.name,
+      })),
+      problemIds: pkg.contest.problems.map((item) => item.id),
+    };
+  } catch {
+    // contest.json 写坏了不该让整个面板打不开：题目照常显示，比赛那一栏空着，
+    // 用户还是能改题目。
+    return null;
+  }
+}
+
+async function summarize(dir: string): Promise<PanelProblemSummary> {
+  try {
+    const pkg = await loadProblem(dir);
+    return {
+      id: pkg.problem.id,
+      name: pkg.problem.name,
+      type: pkg.problem.type,
+      rootDir: pkg.rootDir,
+      testCount: pkg.problem.tests.length,
+      maxScore: scoreProblem(pkg.problem, []).maxScore,
+      subtaskCount: pkg.problem.subtasks.length,
+      broken: null,
+    };
+  } catch (err) {
+    return {
+      id: path.basename(dir),
+      name: path.basename(dir),
+      type: 'traditional',
+      rootDir: dir,
+      testCount: 0,
+      maxScore: 0,
+      subtaskCount: 0,
+      broken: firstLine(err),
+    };
+  }
+}
+
+/**
+ * 当前该展示哪道题：面板里选中的 > 当前文件所属的 > 第一道。
+ *
+ * 「选中」排在前面是因为那是用户刚做过的动作；「当前文件」可能只是他切过去看了一眼。
+ */
+async function pickSelection(
+  selectedProblemId: string | null,
+  problems: PanelProblemSummary[],
+  roots: string[],
+): Promise<string | null> {
+  if (selectedProblemId !== null && problems.some((item) => item.id === selectedProblemId)) {
+    return selectedProblemId;
+  }
+  const activeRoot = await activeProblemRoot();
+  if (activeRoot !== null && roots.includes(activeRoot)) {
+    const match = problems.find((item) => item.rootDir === activeRoot);
+    if (match !== undefined) {
+      return match.id;
+    }
+  }
+  return problems[0]?.id ?? null;
+}
+
+async function detail(
+  problemId: string,
+  problems: PanelProblemSummary[],
+  caseDocs: CaseDocumentStore,
+): Promise<PanelProblemDetail | null> {
+  const summary = problems.find((item) => item.id === problemId);
+  if (summary === undefined || summary.rootDir.length === 0 || summary.broken !== null) {
+    return null;
+  }
+  const pkg = await loadProblem(summary.rootDir);
+  const results = caseDocs.casesOf(pkg.problem.id);
+  const byTest = new Map(results.map((item) => [item.test, item]));
+  const scored = scoreProblem(pkg.problem, results);
+  const subtaskResult = new Map(scored.subtasks.map((item) => [item.id, item]));
+
+  const tests: PanelTest[] = [];
+  for (const test of pkg.problem.tests) {
+    const result = byTest.get(test.id);
+    tests.push({
+      id: test.id,
+      input: test.input,
+      answer: test.answer,
+      points: test.points ?? 1,
+      subtask: test.subtask ?? null,
+      verdict: result?.verdict ?? null,
+      timeMs: result?.timeMs ?? null,
+      memoryKb: result?.memoryKb ?? null,
+      message: result?.message ?? '',
+      firstDiffLine: result?.firstDiffLine ?? null,
+      inputText: await clipFile(path.join(pkg.rootDir, test.input)),
+      expectedText: result === undefined ? await clipFile(path.join(pkg.rootDir, test.answer)) : clip(result.answer),
+      outputText: result === undefined ? '' : clip(result.output),
+      hasData: await exists(path.join(pkg.rootDir, test.input)),
+    });
+  }
+
+  const covered = new Set(results.map((item) => item.test));
+  return {
+    id: pkg.problem.id,
+    name: pkg.problem.name,
+    type: pkg.problem.type,
+    rootDir: pkg.rootDir,
+    limits: pkg.problem.limits,
+    comparator: pkg.problem.comparator,
+    subtasks: pkg.problem.subtasks.map((item) => ({
+      id: item.id,
+      name: item.name ?? `子任务 ${item.id}`,
+      points: item.points,
+      tests: [...item.tests],
+      dependsOn: [...item.dependsOn],
+      scoring: item.scoring,
+      result: subtaskResult.get(item.id) ?? null,
+    })),
+    tests,
+    orphanTests: tests
+      .filter((test) => !pkg.problem.subtasks.some((item) => item.tests.includes(test.id)))
+      .map((test) => test.id),
+    score: scored.score,
+    maxScore: scored.maxScore,
+    partial: results.length > 0 && pkg.problem.tests.some((test) => !covered.has(test.id)),
+  };
+}
+
+function activeSource(): PanelSource | null {
+  const document = vscode.window.activeTextEditor?.document;
+  if (document === undefined || document.uri.scheme !== 'file') {
+    return null;
+  }
+  const file = document.uri.fsPath;
+  return {
+    path: file,
+    name: path.basename(file),
+    dirty: document.isDirty,
+    judgeable: SOURCE_EXTENSIONS.has(path.extname(file).toLowerCase()),
+  };
+}
+
+async function clipFile(target: string): Promise<string> {
+  try {
+    return clip(await fs.promises.readFile(target));
+  } catch {
+    return '';
+  }
+}
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    return (await fs.promises.stat(target)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function clip(bytes: Buffer): string {
+  const text = bytes.toString('utf8').replace(/\r\n?/g, '\n');
+  return text.length > CLIP_CHARS ? `${text.slice(0, CLIP_CHARS)}\n…（已截断）` : text;
+}
+
+function firstLine(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.split('\n')[0] ?? message;
+}

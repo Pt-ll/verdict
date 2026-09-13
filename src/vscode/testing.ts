@@ -15,8 +15,7 @@ export interface TestingDeps {
   output: VerdictOutput;
   judgeInPackage: (
     document: vscode.TextDocument,
-    problemRoot: string,
-    token?: vscode.CancellationToken,
+    request: { problemRoot: string; token?: vscode.CancellationToken },
   ) => Promise<JudgeOutcome | null>;
   /** 起一个调试会话；testId 为空表示用第一个测试点。 */
   debugInPackage: (
@@ -201,7 +200,10 @@ export function registerTesting(deps: TestingDeps): TestingHandle {
     }
 
     run.appendOutput(`开始评测：${document.uri.fsPath}\r\n`);
-    const outcome = await deps.judgeInPackage(document, [...roots][0] ?? '', token);
+    const outcome = await deps.judgeInPackage(document, {
+      problemRoot: [...roots][0] ?? '',
+      token,
+    });
     if (outcome === null) {
       errorAll(run, selected, '评测没有产生结果（可能已被取消）。');
       return null;

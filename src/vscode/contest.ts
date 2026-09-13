@@ -16,6 +16,7 @@ import { canRejudge, computeStandings, summaryStats } from '../core/contest/stan
 import { PROBLEM_FILE, saveProblem } from '../core/problem/package';
 import { standingsToHtml, type ReportOptions } from '../core/report/html';
 import {
+  type Contest,
   DEFAULT_LIMITS,
   type ContestStats,
   type Problem,
@@ -177,6 +178,11 @@ export class ContestSession {
       status.setWarning('Verdict：评测失败');
       throw err;
     }
+  }
+
+  /** 当前加载到的比赛配置；没有比赛时为 null。面板要用它拼榜单。 */
+  contestData(): Contest | null {
+    return this.pkg?.contest ?? null;
   }
 
   /** 重测一条提交；受 maxRejudge 约束（SPEC §5.7）。 */

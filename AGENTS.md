@@ -74,7 +74,8 @@ Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2
 - M1 骨架 + 编译运行 + 单点判定 ✅（2026-09-12 三平台 CI 全绿）
 - M2 题目包 + 测试点 + 子任务 + Testing/diff ✅（三平台 CI 全绿）
 - M3 比赛 + 选手 + 重测 + 榜单 + HTML ✅（三平台 CI 全绿）
-- M4 交互题 + testlib SPJ + 导入导出 + 打包 ← 当前（交付完成，本机验收全过；三平台 CI 待确认）
+- M4 交互题 + testlib SPJ + 导入导出 + 打包 ✅（本机验收全过；三平台 CI 待确认）
+- M5 侧边栏面板（活动栏图标 → 不写 JSON 也能用）← 当前
 
 ## 代码风格
 
@@ -93,3 +94,9 @@ Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2
   导致本该判 WA 的输出被判成 AC。
 - `src/extension.ts` 里 `activate()` 的返回值 `{ judgeDocument }`：集成测试只靠它拿到结构化判定，
   「命令面板点一下」是没法断言的。删掉它，`test/integration` 整片失效。
+- `activate()` 返回的 `dispatchPanel` / `panelState`：侧边栏面板没有标签页、DOM 也读不到，
+  集成测试只能靠这两个口子验「面板背后的状态与动作」。它们同时也是 webview 真正走的那条路，
+  不是测试专用的捷径。
+- `ProblemResult.partial` 与 `CaseDocumentStore.record(..., { merge: true })`：面板上单点运行时，
+  分数只按跑过的点算（是下界），别的点的输出也不该被清掉。这两条一起保证「单点跑一下」
+  不会污染整题结论。

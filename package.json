@@ -48,6 +48,34 @@
     "vscode:prepublish": "node esbuild.js --production"
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "verdict",
+          "title": "Verdict",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "verdict": [
+        {
+          "type": "webview",
+          "id": "verdict.controlPanel",
+          "name": "评测面板",
+          "contextualTitle": "Verdict"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "verdict.checkEnv",
+          "when": "view == verdict.controlPanel",
+          "group": "navigation@1"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "verdict.checkEnv",

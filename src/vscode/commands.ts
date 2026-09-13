@@ -54,12 +54,21 @@ export interface VerdictCommands {
    * 因此这条链路上的弹窗一律不 await（见 reportOutcome 的说明），否则测试会挂到超时。
    */
   judgeDocument(document: vscode.TextDocument): Promise<JudgeOutcome | null>;
-  /** 用指定题目包评测；problemRoot 是 problem.json 所在目录。 */
+  /** 用指定题目包评测。 */
   judgeDocumentInPackage(
     document: vscode.TextDocument,
-    problemRoot: string,
-    token?: vscode.CancellationToken,
+    request: PackageJudgeRequest,
   ): Promise<JudgeOutcome | null>;
+}
+
+export interface PackageJudgeRequest {
+  /** problem.json 所在目录。 */
+  problemRoot: string;
+  token?: vscode.CancellationToken;
+  /** 只跑这些测试点（面板上点单个测试点的「运行」）；缺省跑全部。 */
+  onlyTestIds?: string[];
+  /** 阶段变化；侧边栏面板的进度就指着它。 */
+  onProgress?: (stage: string) => void;
 }
 
 export function registerCommands(deps: CommandDeps): VerdictCommands {
@@ -72,8 +81,7 @@ export function registerCommands(deps: CommandDeps): VerdictCommands {
       vscode.commands.registerCommand(COMMAND_DEBUG_CASE, () => debugCurrent(deps)),
     ],
     judgeDocument: (document) => run.judgeDocument(document),
-    judgeDocumentInPackage: (document, problemRoot, token) =>
-      run.judgeDocumentInPackage(document, problemRoot, token),
+    judgeDocumentInPackage: (document, request) => run.judgeDocumentInPackage(document, request),
   };
 }
 
@@ -195,16 +203,22 @@ class JudgeRunner {
    */
   async judgeDocumentInPackage(
     document: vscode.TextDocument,
-    problemRoot: string,
-    externalToken?: vscode.CancellationToken,
+    request: PackageJudgeRequest,
   ): Promise<JudgeOutcome | null> {
     return this.runJudge(
       document,
       async (sourcePath, options, token, report) => {
-        const pkg = await loadProblem(problemRoot);
-        return judgeWithProblem(sourcePath, pkg, options, token, report);
+        const pkg = await loadProblem(request.problemRoot);
+        return judgeWithProblem(sourcePath, pkg, options, {
+          token,
+          onProgress: (stage) => {
+            report(stage);
+            request.onProgress?.(stage);
+          },
+          ...(request.onlyTestIds === undefined ? {} : { onlyTestIds: request.onlyTestIds }),
+        });
       },
-      externalToken,
+      request.token,
     );
   }
 
@@ -349,14 +363,19 @@ class JudgeRunner {
         // 记下这一轮输出，WA 时才有东西可以 diff。
         // 没有题目包时用源文件名当标识：M1 的约定式数据也能享受到 diff。
         const owner = outcome.problemId ?? path.basename(sourcePath, path.extname(sourcePath));
-        this.deps.caseDocs.record(owner, outcome.cases);
+        // 单点运行只带回来一个测试点：并进上一轮结果里，别把别的点的输出清掉——
+        // 那会让人刚点完一个点，之前那些点的 diff 就全没了。
+        this.deps.caseDocs.record(owner, outcome.cases, { merge: outcome.partial === true });
 
         const total = outcome.cases.length;
         const accepted = outcome.cases.filter((item) => item.verdict === 'AC').length;
         const worst = summarizeVerdict(outcome.cases) ?? 'AC';
         // 有题目包才报分数：M1 的约定式数据每个点 1 分，「得分 1/1」只是噪音。
         const scoreText =
-          outcome.problemId === undefined ? '' : `，得分 ${outcome.score}/${outcome.maxScore}`;
+          outcome.problemId === undefined
+            ? ''
+            : `，得分 ${outcome.score}/${outcome.maxScore}` +
+              (outcome.partial === true ? '（只跑了部分测试点，是下界）' : '');
 
         if (accepted === total && total > 0) {
           status.setIdle(

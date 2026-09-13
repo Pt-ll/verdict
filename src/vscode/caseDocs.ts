@@ -22,6 +22,15 @@ const MAX_DOCUMENTS = 64;
 export class CaseDocumentStore implements vscode.TextDocumentContentProvider {
   private readonly content = new Map<string, string>();
   private readonly lastCases = new Map<string, CaseResult[]>();
+  private readonly recorded = new vscode.EventEmitter<string>();
+
+  /**
+   * 一轮评测记录完成。
+   *
+   * 侧边栏面板靠它刷新「每一行的判定」：评测可能从 Testing 面板、命令面板或
+   * 通知里的入口发起，面板不能只在自己发起时才更新。
+   */
+  readonly onDidRecord = this.recorded.event;
 
   /** 注册 provider；由 context.subscriptions 负责释放。 */
   register(context: vscode.ExtensionContext): void {
@@ -35,17 +44,27 @@ export class CaseDocumentStore implements vscode.TextDocumentContentProvider {
     return parsed === null ? '' : (this.content.get(keyOf(parsed)) ?? '');
   }
 
-  /** 记下一轮评测的全部测试点，供 diff 与「另存」使用。 */
-  record(problemId: string, cases: CaseResult[]): void {
+  /**
+   * 记下一轮评测的测试点，供 diff 与「另存」使用。
+   *
+   * merge 用于只跑了一部分测试点的场合（面板上单点「运行」）：只替换跑过的那几个，
+   * 其余保持上一轮的样子。
+   */
+  record(problemId: string, cases: CaseResult[], options: { merge?: boolean } = {}): void {
+    const merged =
+      options.merge === true
+        ? mergeCases(this.lastCases.get(problemId) ?? [], cases)
+        : cases;
     // 只替换同一个题目名下的旧结果：别的题目可能还有开着的 diff 标签页在看着它，
     // 一次性清空会让那些标签页变成空白。
     this.dropOwner(problemId);
-    for (const item of cases) {
+    for (const item of merged) {
       this.put(problemId, item.test, 'output', item.output);
       this.put(problemId, item.test, 'answer', item.answer);
     }
     this.evictOldest();
-    this.lastCases.set(problemId, cases);
+    this.lastCases.set(problemId, merged);
+    this.recorded.fire(problemId);
   }
 
   /** 最近一次评测某个题目的逐点结果；「对比输出」用它列出可选的测试点。 */
@@ -106,6 +125,32 @@ export class CaseDocumentStore implements vscode.TextDocumentContentProvider {
       this.content.delete(oldest.value);
     }
   }
+
+  dispose(): void {
+    this.recorded.dispose();
+  }
+}
+
+/** 新结果覆盖同名的旧结果，顺序沿用上一轮，新出现的点接在后面。 */
+function mergeCases(previous: CaseResult[], incoming: CaseResult[]): CaseResult[] {
+  const byTest = new Map(incoming.map((item) => [item.test, item]));
+  const merged: CaseResult[] = [];
+  for (const item of previous) {
+    const replacement = byTest.get(item.test);
+    if (replacement === undefined) {
+      merged.push(item);
+    } else {
+      merged.push(replacement);
+      byTest.delete(item.test);
+    }
+  }
+  for (const item of incoming) {
+    if (byTest.has(item.test)) {
+      merged.push(item);
+      byTest.delete(item.test);
+    }
+  }
+  return merged;
 }
 
 interface CaseUri {

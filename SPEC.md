@@ -67,7 +67,7 @@ Verdict 是一个 VSCode 扩展：把 OI / ICPC 风格的**本地评测系统**�
 | 虚拟文档 scheme | `verdict://` |
 | 工作区目录 | `.verdict/` |
 | 输出通道 / 诊断集合 | `Verdict` / `verdict` |
-| 活动栏容器 / 视图 | `verdict` / `contest` `standings` `submissions` |
+| 活动栏容器 / 视图 | `verdict` / `verdict.controlPanel`（侧边栏面板，§4.12） |
 | Testing 控制器 | `verdict` |
 | 仓库目录名 | `verdict` |
 
@@ -261,6 +261,85 @@ WA 时执行 `vscode.commands.executeCommand('vscode.diff', outputUri, answerUri
 `outputLimitKb` / `comparator` / `realAbsEps` / `realRelEps` / `autoDiff` / `testlibPath` /
 `debugStopAtEntry`。`parallelJudge`（并行评测）与 `autoJudgeOnSave`（保存即评测）
 尚未实现；`reportDir` 暂未使用（导出 HTML 走保存对话框）。
+
+### 4.12 侧边栏面板（活动栏，WebView）
+
+**为什么要有它**：`problem.json` / `contest.json` 都能手写，但**大多数人不会去写 JSON**。
+命令面板把「创建」图形化了，「看和改」却仍然要打开文件；评测、榜单、重测又散在命令面板、
+Testing 面板与编辑器标签页里。所以补一个常驻面板：**活动栏上一个 Verdict 图标**，
+点开就是整套操作台——参照 LemonLime 那类本地评测软件的做法，把出题、评测、看结果收进一个界面。
+
+**设计原则：JSON 仍然是唯一的存储格式，面板只是它的一个视图。**
+
+- 面板的每次编辑都走 `saveProblem` / `saveContest`，与手改文件完全等价；
+- 磁盘上的文件被改动（编辑器里手改、git 切分支、另一个窗口改了）时面板跟着刷新；
+- 于是「不想碰 JSON 的人用面板」与「想用 git 管数据的人继续手写」两不误，也没有第二份数据。
+
+贡献点：
+
+```jsonc
+"viewsContainers": { "activitybar": [{ "id": "verdict", "title": "Verdict", "icon": "media/activity.svg" }] },
+"views": { "verdict": [{ "type": "webview", "id": "verdict.controlPanel", "name": "评测面板" }] }
+```
+
+布局（三页签 + 常驻顶部/底部）：
+
+```text
+┌─ A. 求和 ──────────────────────────┐  顶部：当前题目、比赛、当前源码
+│ 内部训练赛 #3 · 2 名选手            │  [▶ 评测] [🐞 调试] [■ 取消]
+│ 源码：A.cpp                         │
+├─────────────────────────────────────┤
+│  题目  |  测试点  |  榜单            │  页签
+├─────────────────────────────────────┤
+│ 限制    1000ms / 256MB / 4096KB [编辑] │
+│ 比较    default                 [切换] │
+├─────────────────────────────────────┤
+│ 小数据  30 分 · 依赖 无 · 组内全对     │
+│  #1 [AC] 12ms 1.3MB      [▶][🐞][▸]  │
+│ 大数据  70 分 · 依赖 无 · 组内全对     │
+│  #2 [WA]  8ms 1.3MB      [▶][🐞][⇄][▸]│
+│ [扫描新测试点][＋子任务][按点均分][清空]│
+├─────────────────────────────────────┤
+│ WA · AC 3/6 · 得分 30/100 · 214ms     │  底部：忙碌中/最近一次结果
+└─────────────────────────────────────┘
+```
+
+- 「题目」页签：比赛信息（没有就一键新建）、题目列表、新建/导入/导出题目包、
+  选中题目的**限制**与**比较方式**（五种模式都能在这里改，real 的 eps 与 spj / interactor
+  的文件用文件选择器指定）。
+- 「测试点」页签：按子任务分组的测试点表；每行给出最近一次判定、用时、内存，
+  `▶` 只跑这一个点、`🐞` 用它起调试、`⇄` 开 diff、`▸` 展开看输入 / 标准答案 / 实际输出；
+  子任务能改分值、依赖与组内计分（min / sum），也能增删、按点均分、清空；
+  测试点可以改归属或移出登记（**只取消登记，不动 `data/` 里的文件**）。
+- 「榜单」页签：紧凑的选手 × 题目矩阵，点单元格看详情并重测（受 `maxRejudge` 约束），
+  一键「评测全部」、导出 HTML、或打开编辑器里那份完整榜单。
+- 行的状态来自 `CaseDocumentStore`，与 Testing 面板、`verdict.showDiff` 共用同一份结果，
+  不另算一套；**单点运行只更新那一个点**，不会把别的点的输出清掉。
+
+消息协议（与榜单 WebView 同一套做法，双向）：
+
+| 方向 | 消息 | 说明 |
+| --- | --- | --- |
+| 面板 → 扩展 | `ready` / `refresh` / `selectProblem` | 就绪、刷新、切换当前题目 |
+| 面板 → 扩展 | `judge` / `judgeCase` / `debug` / `debugCase` / `openDiff` | 评测与运行 |
+| 面板 → 扩展 | `setLimits` / `setComparator` / `pickComparatorFile` | 改限制与比较方式 |
+| 面板 → 扩展 | `scanTests` / `moveTest` / `removeTest` / `addSubtask` / `removeSubtask` / `updateSubtask` / `evenSubtasks` / `clearSubtasks` | 改测试点与子任务 |
+| 面板 → 扩展 | `openCaseFile` / `openDataDir` / `openProblemJson` | 用编辑器打开文件，不重造编辑器 |
+| 面板 → 扩展 | `rejudge` / `cancel` / `command` | 重测、取消、执行白名单里的命令 |
+| 扩展 → 面板 | `data` | 比赛、题目、测试点、最近结果、榜单 |
+| 扩展 → 面板 | `busy` / `notice` / `filePicked` | 进度、需要用户知道的一句话、选中的文件路径 |
+
+安全与实现沿用榜单 WebView：CSP `default-src 'none'`、脚本与样式用 nonce、
+数据全部 `postMessage` 注入、DOM 用 `createElement` / `textContent` 构建（不拼 HTML 字符串）。
+面板的纯逻辑（改限制、加子任务、移归属……）都在 `core/problem/edit.ts` 里，是纯函数、可单测；
+`src/vscode/panel/` 只负责把状态收出来、把消息接上。
+
+单点运行的分数**是个下界**：子任务计分是拿整套数据算的，只跑一个点时依赖它的子任务会变成
+0 分——所以 `ProblemResult.partial` 会标出来，面板在 partial 时干脆不显示总分，
+只说「点『评测整题』看完整得分」。把那个 0 分当结论展示，是在骗人。
+
+想看效果又不想起扩展宿主时，用 `src/tools/previewPanel.ts` 把面板渲染成一个普通网页
+（见该文件头部的两行命令）。
 
 ---
 
@@ -901,6 +980,16 @@ exitCode != 0          -> RE
 - testlib checker 的 AC / WA / PE / 部分分（退出码 7）判定与折算正确（§5.4）。
 - 题目包导出后可在另一工作区导入并成功评测。
 
+### M5 — 侧边栏面板（不写 JSON 也能用）
+交付：活动栏容器与 `verdict.controlPanel` 视图、`src/vscode/panel/**`、`core/problem/edit.ts`
+的编辑函数、单测试点运行（`onlyTestIds` + `ProblemResult.partial`）、预览工具。
+验收：
+- 点活动栏图标就能看到面板：题目、测试点、限制、比较方式、子任务、榜单都在里面。
+- 从空工作区开始，只用面板就能走完「新建比赛 → 新建题目 → 扫描测试点 → 评测 → 榜单」。
+- 面板上的每次编辑都写进 `problem.json` / `contest.json`，与手改文件等价，改完仍能加载。
+- 单点运行只更新那一个测试点，且分数被标成 partial、不当作整题结论展示。
+- 面板里没有网络请求、没有 `innerHTML` 拼串（单测断言）。
+
 ---
 
 ## 13. 目录结构
@@ -949,6 +1038,7 @@ verdict/
 │   │   └── rng.ts
 │   ├── vscode/               # 仅此目录依赖 vscode API
 │   │   ├── commands.ts
+│   │   ├── controlPanel.ts   # 活动栏侧边栏面板的 provider 与消息路由（§4.12）
 │   │   ├── codelens.ts
 │   │   ├── diagnostics.ts
 │   │   ├── testing.ts
@@ -957,8 +1047,10 @@ verdict/
 │   │   ├── virtualDocs.ts
 │   │   ├── debug.ts
 │   │   ├── config.ts
+│   │   ├── panel/            # 面板的纯 UI 层：html.ts(模板) / state.ts(收状态)
 │   │   └── webview/
 │   ├── engineFacade.ts       # 串起 core，向 UI 暴露任务 API + 进度事件
+│   ├── tools/                # 构建期工具（打包 VSIX、面板预览），不进扩展本体
 │   └── util/
 ├── test/                     # 单元测试 + 集成测试
 ├── testdata/                 # 样例比赛/题目/程序 + 期望结果

@@ -73,6 +73,8 @@ export type JudgeOutcome =
       maxScore: number;
       /** 来自题目包时才有：题目 id。 */
       problemId?: string;
+      /** 只跑了一部分测试点（面板单点运行）：分数是下界，不是完整结论。 */
+      partial?: boolean;
       dataDir: string;
       elapsedMs: number;
       cancelled: boolean;
@@ -118,7 +120,7 @@ export async function judgeSourceFile(
   const packageRoot = await findProblemRoot(path.dirname(sourcePath), options.workspaceRoot);
   if (packageRoot !== null) {
     const pkg = await loadProblem(packageRoot);
-    return judgeWithProblem(sourcePath, pkg, options, token, report, startedAt);
+    return judgeWithProblem(sourcePath, pkg, options, { token, onProgress: report, startedAt });
   }
 
   report('查找测试数据');
@@ -208,15 +210,24 @@ export async function judgeSourceFile(
  * 「从源码位置向上找题目包」在比赛布局下是不够用的：题目包在 .verdict/problems/<id>/ 下，
  * 而选手源码在 players/ 里，两者相距很远。Testing 面板与 M3 的比赛流程都走这个入口。
  */
+export interface JudgeCallOptions {
+  token?: CancellationTokenLike;
+  onProgress?: (stage: string) => void;
+  /** 评测开始的时刻；调用方先做了别的事（比如编译前缀）时可以自己给。 */
+  startedAt?: number;
+  /** 只跑这些测试点（面板上点单个测试点的「运行」用）；缺省跑全部。 */
+  onlyTestIds?: string[];
+}
+
 export async function judgeWithProblem(
   sourcePath: string,
   pkg: ProblemPackage,
   options: EngineOptions,
-  token?: CancellationTokenLike,
-  onProgress?: (stage: string) => void,
-  startedAt: number = Date.now(),
+  call: JudgeCallOptions = {},
 ): Promise<JudgeOutcome> {
-  const report = onProgress ?? ((): void => undefined);
+  const { token } = call;
+  const startedAt = call.startedAt ?? Date.now();
+  const report = call.onProgress ?? ((): void => undefined);
 
   if (pkg.problem.tests.length === 0) {
     return {
@@ -233,7 +244,13 @@ export async function judgeWithProblem(
     return prepared.outcome;
   }
 
-  const result = await judgeProblem(pkg, await judgeContextOf(pkg, prepared, options), token, report);
+  const context = await judgeContextOf(pkg, prepared, options);
+  const result = await judgeProblem(
+    pkg,
+    call.onlyTestIds === undefined ? context : { ...context, onlyTestIds: call.onlyTestIds },
+    token,
+    report,
+  );
   return {
     kind: 'judged',
     compile: prepared.compiled,
@@ -246,6 +263,7 @@ export async function judgeWithProblem(
     elapsedMs: Date.now() - startedAt,
     cancelled: token?.isCancellationRequested === true,
     warmedUp: prepared.warmedUp,
+    ...(result.partial === undefined ? {} : { partial: true }),
   };
 }
 
