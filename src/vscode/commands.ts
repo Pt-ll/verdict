@@ -369,11 +369,31 @@ class JudgeRunner {
 
         if (!outcome.cancelled) {
           const summary = `Verdict：${worst} ${accepted}/${total}${scoreText}，用时 ${outcome.elapsedMs}ms。`;
-          void vscode.window.showInformationMessage(summary, '查看输出').then((choice) => {
-            if (choice === '查看输出') {
-              output.show();
-            }
-          });
+          // 有没过的点就给一个「调试该测试点」的入口：SPEC §4.8 说的
+          // 「评测失败 → 一键起调试」就该是这么顺手。
+          const failed = outcome.cases.find((item) => item.verdict !== 'AC');
+          const actions = failed === undefined ? ['查看输出'] : ['查看输出', '🐞 调试该测试点'];
+          void vscode.window
+            .showInformationMessage(summary, ...actions)
+            .then(async (choice) => {
+              if (choice === '查看输出') {
+                output.show();
+                return;
+              }
+              if (choice === '🐞 调试该测试点' && failed !== undefined) {
+                const editor = await vscode.window.showTextDocument(vscode.Uri.file(sourcePath));
+                const result = await startDebug(
+                  { context: this.deps.context, output: this.deps.output },
+                  editor.document,
+                  { testId: failed.test },
+                );
+                const failure = debugFailureText(result);
+                if (failure !== null) {
+                  output.error(failure);
+                  void vscode.window.showErrorMessage(`Verdict：${failure}`);
+                }
+              }
+            });
         }
 
         await this.openDiffIfFailed(owner, outcome);

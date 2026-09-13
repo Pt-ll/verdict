@@ -27,7 +27,17 @@ export interface InteractiveRunner {
     answer: Buffer,
     limits: Limits,
     token?: CancellationTokenLike,
-  ): Promise<{ result: InteractiveOutcome; run: RunResult }>;
+  ): Promise<InteractiveRunOutcome>;
+}
+
+export interface InteractiveRunOutcome {
+  result: InteractiveOutcome;
+  run: RunResult;
+  /**
+   * 两个方向的字节流。调试交互题时靠 toPrimary 重放：把交互器发给选手的那串输入
+   * 喂给调试会话，就能在真实输入下断点单步（前提是选手的反应与录制时一致）。
+   */
+  transcript: { toPrimary: Buffer; fromPrimary: Buffer };
 }
 
 // 交互题的判定规则。顺序是有讲究的：
@@ -163,6 +173,7 @@ export async function prepareInteractor(
           return {
             result: decideInteractiveVerdict(connected.primary, connected.secondary),
             run: connected.primary,
+            transcript: connected.transcript,
           };
         } finally {
           await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => undefined);

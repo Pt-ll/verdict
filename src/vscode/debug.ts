@@ -1,6 +1,7 @@
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import * as vscode from 'vscode';
-import { compile } from '../core/compiler';
+import { compile, type Toolchain } from '../core/compiler';
 import {
   buildDebugSession,
   debugFlags,
@@ -8,9 +9,17 @@ import {
   debuggerTypeOf,
   type DebugSessionConfig,
 } from '../core/debug/launch';
-import { findProblemRoot, loadProblem, resolveTestPath } from '../core/problem/package';
+import { checkerLimits, type Problem, type TestCase } from '../core/model';
+import { prepareComparator } from '../core/compare/prepare';
+import { createSandbox, type RunCommand } from '../core/sandbox/sandbox';
+import {
+  findProblemRoot,
+  loadProblem,
+  resolveTestPath,
+  type ProblemPackage,
+} from '../core/problem/package';
 import { findTestsBesideSource, resolveTestFiles } from '../core/problem/scan';
-import { resolveToolchain } from '../engineFacade';
+import { resolveToolchain, testlibDirFor, type EngineOptions } from '../engineFacade';
 import { readEngineOptions } from './config';
 import type { VerdictOutput } from './output';
 import { workspaceRoot } from './workspace';
@@ -34,6 +43,10 @@ export type DebugResult =
       inputPath?: string;
       /** 是否成功把测试点输入接到了 stdin（MSVC 的调试器不支持自动接）。 */
       injected: boolean;
+      /** 交互题才有：录制下来的对局记录，便于复盘。 */
+      transcriptPath?: string;
+      /** 需要额外告诉用户的一句话（例如「已录下一局对局」）。 */
+      note?: string;
     }
   | { kind: 'no-source'; message: string }
   | { kind: 'no-tests'; message: string }
@@ -113,14 +126,23 @@ export async function startDebug(
     };
   }
 
+  // 交互题：先把一局真实对局录下来，调试时用交互器发来的那串输入当 stdin。
+  // 调试器里跑不了真实的两进程对话（断点一停，交互器就等在那儿），
+  // 所以退而求其次：录一局，再重放。前提是选手的反应与录制时一致，这点会写在提示里。
+  const replay = await prepareReplay(found, compiled.runCmd, engine, toolchain);
+  if (!replay.ok) {
+    return { kind: 'failed', message: replay.message };
+  }
+
   const config = buildDebugSession({
     sourcePath,
     program: toolchain.kind === 'python' ? undefined : compiled.exe,
     cwd: found.cwd,
-    inputPath: found.inputPath,
+    inputPath: replay.tapePath ?? found.inputPath,
     kind: toolchain.kind,
     platform: process.platform,
     name: `Verdict：调试 #${found.testId}`,
+    stopAtEntry: readStopAtEntry(),
   });
 
   const program = toolchain.kind === 'python' ? sourcePath : compiled.exe;
@@ -140,20 +162,29 @@ export async function startDebug(
   const injected = config.setupCommands !== undefined;
   deps.output.info(`开始调试：测试点 #${found.testId}，程序 ${program}`);
   deps.output.info(`工作目录：${found.cwd}`);
-  if (found.inputPath !== undefined) {
+  const effectiveInput = replay.tapePath ?? found.inputPath;
+  if (effectiveInput !== undefined) {
     deps.output.info(
       injected
-        ? `输入文件：${found.inputPath}（已尝试接到 stdin）`
-        : `输入文件：${found.inputPath}（这个调试器不支持自动接输入，必要时手动喂）`,
+        ? `输入文件：${effectiveInput}（已尝试接到 stdin）`
+        : `输入文件：${effectiveInput}（这个调试器不支持自动接输入，必要时手动喂）`,
     );
+  }
+  if (replay.note !== undefined) {
+    deps.output.info(replay.note);
+  }
+  if (replay.transcriptPath !== undefined) {
+    deps.output.info(`对局记录：${replay.transcriptPath}`);
   }
 
   return {
     kind: 'started',
     testId: found.testId,
     program,
-    ...(found.inputPath === undefined ? {} : { inputPath: found.inputPath }),
+    ...(effectiveInput === undefined ? {} : { inputPath: effectiveInput }),
     injected,
+    ...(replay.transcriptPath === undefined ? {} : { transcriptPath: replay.transcriptPath }),
+    ...(replay.note === undefined ? {} : { note: replay.note }),
   };
 }
 
@@ -161,6 +192,10 @@ interface DebugTargetFiles {
   testId: string;
   inputPath?: string;
   cwd: string;
+  /** 题目包（约定式查找时为 undefined）。交互题要靠它编译并运行 interactor。 */
+  problemPackage?: ProblemPackage;
+  problem?: Problem;
+  test?: TestCase;
 }
 
 async function findDebugTarget(
@@ -189,6 +224,9 @@ async function findDebugTarget(
       testId: test.id,
       inputPath: resolveTestPath(pkg, test).inputPath,
       cwd: pkg.rootDir,
+      problemPackage: pkg,
+      problem: pkg.problem,
+      test,
     };
   }
 
@@ -223,6 +261,103 @@ function toDebugConfiguration(config: DebugSessionConfig): vscode.DebugConfigura
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+type ReplayPlan =
+  | { ok: true; tapePath?: string; transcriptPath?: string; note?: string }
+  | { ok: false; message: string };
+
+/**
+ * 交互题的调试准备：录一局真实对局，把「交互器发给选手」的那串输入写成文件，
+ * 调试会话就从这个文件读 stdin。
+ *
+ * 调试器里跑不了真实的两进程对话（断点一停，交互器就等在那儿，两边都不动），
+ * 所以只能录下来重放。要注意的地方：若交互器是自适应的，而选手的反应与录制时不同，
+ * 后面就会对不上——这一点写进了提示里，别让人以为看到的一定是真实对局。
+ */
+async function prepareReplay(
+  found: DebugTargetFiles,
+  runCmd: RunCommand,
+  engine: EngineOptions,
+  toolchain: Toolchain,
+): Promise<ReplayPlan> {
+  const { problemPackage, problem, test } = found;
+  if (problem === undefined || problemPackage === undefined || test === undefined) {
+    return { ok: true };
+  }
+  if (problem.comparator.mode !== 'interactive') {
+    return { ok: true };
+  }
+
+  const prepared = await prepareComparator(problem.comparator, {
+    packageRoot: problemPackage.rootDir,
+    toolchain,
+    sandbox: createSandbox(),
+    limits: checkerLimits(problem.limits),
+    cacheDir: engine.cacheDir,
+    testlibDir: await testlibDirFor(problemPackage, engine),
+  });
+  if ('error' in prepared) {
+    return { ok: false, message: `交互器没准备好：${prepared.error}` };
+  }
+  if (prepared.interactive === undefined) {
+    return { ok: false, message: '这个题目不是交互题，但比较方式写着 interactive。' };
+  }
+
+  const { inputPath, answerPath } = resolveTestPath(problemPackage, test);
+  const [input, answer] = await Promise.all([
+    readFileOrNull(inputPath),
+    readFileOrNull(answerPath),
+  ]);
+  if (input === null || answer === null) {
+    return { ok: false, message: `读不到测试数据：${input === null ? inputPath : answerPath}` };
+  }
+
+  const outcome = await prepared.interactive.run(runCmd, input, answer, problem.limits);
+  const dir = path.join(engine.cacheDir, 'debug');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const tapePath = path.join(dir, `${problem.id}-${test.id}-replay-stdin.txt`);
+  const transcriptPath = path.join(dir, `${problem.id}-${test.id}-transcript.txt`);
+  await fs.promises.writeFile(tapePath, outcome.transcript.toPrimary);
+  await fs.promises.writeFile(transcriptPath, formatTranscript(outcome.transcript));
+
+  return {
+    ok: true,
+    tapePath,
+    transcriptPath,
+    note:
+      `已录下一局真实对局（判定 ${outcome.result.verdict}），调试时重放这串输入。` +
+      '若交互器会随选手的回答改变后续内容，请以实际对局为准。',
+  };
+}
+
+/** 把两个方向的字节流写成给人看的样子；不假装它们能逐行对齐。 */
+function formatTranscript(transcript: { toPrimary: Buffer; fromPrimary: Buffer }): string {
+  return [
+    '# Verdict 交互记录',
+    '#',
+    '# 调试时会重放「交互器发给选手」这一段作为 stdin。',
+    '',
+    '=== 交互器发给选手（重放时作为 stdin）===',
+    transcript.toPrimary.toString('utf8'),
+    '=== 选手发给交互器 ===',
+    transcript.fromPrimary.toString('utf8'),
+    '',
+  ].join('\n');
+}
+
+function readStopAtEntry(): boolean {
+  return (
+    vscode.workspace.getConfiguration('verdict').get<boolean>('debugStopAtEntry') === true
+  );
+}
+
+async function readFileOrNull(target: string): Promise<Buffer | null> {
+  try {
+    return await fs.promises.readFile(target);
+  } catch {
+    return null;
+  }
 }
 
 /** 失败时给用户看的那句话；成功（起了调试会话）返回 null。 */

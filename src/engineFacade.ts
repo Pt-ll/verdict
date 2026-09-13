@@ -456,7 +456,10 @@ async function prepareRun(
 }
 
 /** 按 SPEC §6.6 的顺序找 testlib.h：题目包 extra/ → 工作区 .verdict/testlib/ → 用户设置。 */
-async function testlibDirFor(pkg: ProblemPackage, options: EngineOptions): Promise<string | null> {
+export async function testlibDirFor(
+  pkg: ProblemPackage,
+  options: EngineOptions,
+): Promise<string | null> {
   return resolveTestlibDir([
     pkg.extraDir,
     options.workspaceRoot === undefined ? undefined : workspaceTestlibDir(options.workspaceRoot),

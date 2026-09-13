@@ -184,6 +184,9 @@ Verdict 是一个 VSCode 扩展：把 OI / ICPC 风格的**本地评测系统**�
 
 > 实现进度：树结构、`run` profile 与 `debug` profile 都已落地（`src/vscode/testing.ts`）。
 > M2 的树是「题目 > 子任务 > 测试点」，比赛那一层（§5.7）属于 M3。
+> 调试入口一共有四处：Testing 面板的调试按钮、命令 `verdict.debugCase`、
+> 源码顶部的 CodeLens「🐞 调试首测点」，以及评测失败通知里的「🐞 调试该测试点」
+> （SPEC §4.8 说的「评测失败 → 一键起调试」）。
 
 ### 4.5 原生 diff
 
@@ -222,6 +225,24 @@ WA 时执行 `vscode.commands.executeCommand('vscode.diff', outputUri, answerUri
 - 工作目录设成题目包根目录，程序读相对路径的数据文件时与出题人的预期一致
   （评测时 cwd 继承扩展宿主，SPEC 没有规定，也就不该指望它）。
 
+已验证到什么程度（免得把「试过」当成「能用」）：
+
+- **lldb 路径（macOS）已证明可用**：集成测试里放了一个探针程序，它在调试会话中把读到的
+  stdin 写到文件，断言内容与测试点输入完全一致。这条命令是 `setupCommands` 里的
+  `settings set target.input-path`，生效与否只能这样验，光看「命令发出去了」不算数。
+- **gdb 路径（Linux）尚未验证**：用的是 `set inferior-tty`，标了 `ignoreFailures`，
+  失败也不会让会话起不来；真没生效时退化成手动喂输入（输入文件路径会打在输出通道里）。
+  本机没有 gdb，Linux CI 又没有 cpptools，所以这条只能留着待验。
+- **MSVC（cppvsdbg）没有对应的注入能力**，只能手动喂；此时提示里会写清楚输入文件在哪。
+- `verdict.debugStopAtEntry` 打开后停在程序入口（cpptools 用 `stopAtEntry`，
+  debugpy 用 `stopOnEntry`）。
+
+交互题的调试走另一条路：**录制-重放**。调试器里跑不了真实的两进程对话（断点一停，
+交互器就等在那儿，两边都不动），所以先真跑一局，把「交互器发给选手」的那串字节写成
+文件，调试会话就从这个文件读 stdin（`runConnected` 的结果里带上两个方向的字节流，
+上限 64KB）。前提是选手的反应与录制时一致——自适应交互器会在第一次分歧之后对不上，
+这一点写在提示里；完整对局记录也会落盘，方便复盘。
+
 ### 4.9 状态栏
 
 - 评测中：`$(sync~spin) 评测 12/40 · AC 7 WA 3 TLE 2`。
@@ -235,6 +256,11 @@ WA 时执行 `vscode.commands.executeCommand('vscode.diff', outputUri, answerUri
 
 - `activationEvents`：`onLanguage:cpp`、`onLanguage:c`、`workspaceContains:**/.verdict/contest.json`、`onStartupFinished`（当存在评测目录时）。
 - 设置项：`verdict.compiler`、`verdict.flags`、`verdict.defaultTimeMs`、`verdict.defaultMemoryMb`、`verdict.outputLimitKb`、`verdict.testlibPath`、`verdict.parallelJudge`、`verdict.autoJudgeOnSave`、`verdict.reportDir`、`verdict.debug`。
+
+实现现状：已落地 `compiler` / `flags` / `debug` / `defaultTimeMs` / `defaultMemoryMb` /
+`outputLimitKb` / `comparator` / `realAbsEps` / `realRelEps` / `autoDiff` / `testlibPath` /
+`debugStopAtEntry`。`parallelJudge`（并行评测）与 `autoJudgeOnSave`（保存即评测）
+尚未实现；`reportDir` 暂未使用（导出 HTML 走保存对话框）。
 
 ---
 

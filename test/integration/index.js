@@ -211,6 +211,108 @@ async function checkDebug(api, root) {
   // 收拾干净：留着会话会让扩展宿主退出变慢。
   await vscode.debug.stopDebugging();
   console.log(`[verdict] 调试：会话已启动（stdio 注入 ${result.injected ? '已尝试' : '未尝试'}），随后停止`);
+
+  await checkDebugInjection(api);
+  await checkInteractiveDebug(api, root);
+}
+
+/**
+ * 交互题的调试（录制-重放）。
+ *
+ * 调试器里跑不了真实的两进程对话，所以做法是：先录一局真实对局，再用「交互器发给选手」
+ * 的那串输入当调试会话的 stdin。这里验的是录制与接线——注入机制本身在上一条里已经验过
+ * （同一个 lldb 命令，同一个配置文件）。
+ */
+async function checkInteractiveDebug(api, root) {
+  await openSource(root, 'players/alice/C.cpp');
+
+  const result = await api.debugFirstCase(
+    vscode.Uri.joinPath(root, '.verdict', 'problems', 'C').fsPath,
+    '1',
+  );
+  assert.equal(result.kind, 'started', `交互题的调试会话没起来：${result.message || ''}`);
+  assert.ok(result.note !== undefined && result.note.includes('重放'), '应当说明这是在重放');
+  assert.ok(
+    result.inputPath !== undefined && result.inputPath.endsWith('replay-stdin.txt'),
+    `调试时的 stdin 应当是录下来的提示串，实际 ${result.inputPath}`,
+  );
+  assert.ok(result.transcriptPath !== undefined, '应当留下对局记录');
+
+  // 提示串里必须有交互器说过的话：空文件说明录制没成功。
+  const tape = fs.readFileSync(result.inputPath, 'utf8');
+  assert.ok(tape.includes('ok') || tape.includes('bigger') || tape.includes('smaller'), `提示串内容不对：${JSON.stringify(tape)}`);
+  const transcript = fs.readFileSync(result.transcriptPath, 'utf8');
+  assert.ok(transcript.includes('选手发给交互器'), '对局记录应当两个方向都有');
+
+  await vscode.debug.stopDebugging();
+  console.log(`[verdict] 交互题调试：已录下对局（提示串 ${tape.trim().split(/\s+/).length} 段），并用它作为调试输入`);
+}
+
+/**
+ * 关键验证：调试会话里，程序**真的读到了**测试点的输入。
+ *
+ * 光看「已尝试注入」说明不了问题——那条 lldb 命令可能被静默忽略（我们标了 ignoreFailures）。
+ * 所以用探针程序把读到的 stdin 写到文件里，再对内容。这是唯一能证明注入生效的办法。
+ */
+async function checkDebugInjection(api) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-debug-'));
+  const dirUri = vscode.Uri.file(dir);
+  try {
+    fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'problem.json'),
+      JSON.stringify({
+        id: 'DBG',
+        name: 'DBG. 探针',
+        limits: { timeMs: 5000, memoryMb: 256, stackMb: 256, outputKb: 4096 },
+        tests: [{ id: '1', input: 'data/1.in', answer: 'data/1.out', points: 100 }],
+      }),
+    );
+    fs.writeFileSync(path.join(dir, 'data', '1.in'), '1 2\n');
+    fs.writeFileSync(path.join(dir, 'data', '1.out'), '3\n');
+
+    // 探针：把 stdin 原样写到工作目录下的一个文件。调试配置里的 cwd 就是题目包根目录，
+    // 所以这个文件会落在 dir/ 下面。
+    fs.writeFileSync(
+      path.join(dir, 'probe.cpp'),
+      [
+        '#include <cstdio>',
+        'int main() {',
+        '  FILE* out = std::fopen("verdict-debug-stdin.txt", "wb");',
+        '  if (out == nullptr) return 1;',
+        '  char buffer[256];',
+        '  while (std::fgets(buffer, sizeof buffer, stdin) != nullptr) {',
+        '    std::fputs(buffer, out);',
+        '  }',
+        '  std::fclose(out);',
+        '  return 0;',
+        '}',
+        '',
+      ].join('\n'),
+    );
+
+    const document = await vscode.workspace.openTextDocument(
+      vscode.Uri.joinPath(dirUri, 'probe.cpp'),
+    );
+    await vscode.window.showTextDocument(document);
+
+    const result = await api.debugFirstCase(dir, '1');
+    assert.equal(result.kind, 'started', `探针的调试会话没起来：${result.message || ''}`);
+
+    const evidence = path.join(dir, 'verdict-debug-stdin.txt');
+    const deadline = Date.now() + 20_000;
+    while (!fs.existsSync(evidence) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.ok(fs.existsSync(evidence), '调试会话里程序没有读到任何输入（注入没生效）');
+    const read = fs.readFileSync(evidence, 'utf8');
+    assert.equal(read, '1 2\n', `程序读到的应当是测试点输入，实际读到 ${JSON.stringify(read)}`);
+
+    await vscode.debug.stopDebugging();
+    console.log('[verdict] 调试注入验证：程序读到的 stdin 与测试点输入一致');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**

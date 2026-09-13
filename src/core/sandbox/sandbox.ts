@@ -54,7 +54,12 @@ export interface ConnectedRunResult {
   secondary: RunResult & { killed: boolean };
   /** 是选手程序先结束，还是交互器先结束（判定时要区分「谁把谁等死了」）。 */
   endedFirst: 'primary' | 'secondary' | 'same';
+  /** 两个方向的字节流（各有上限）。交互题的调试靠它重放，出问题时也靠它复盘。 */
+  transcript: { toPrimary: Buffer; fromPrimary: Buffer };
 }
+
+/** 交互记录的保留上限：够复盘，又不至于把内存吃光。 */
+const TRANSCRIPT_LIMIT_BYTES = 64 * 1024;
 
 export interface PreparedCommand {
   cmd: string;
@@ -334,6 +339,7 @@ export async function runConnected(
       primary: internalResult(message),
       secondary: { ...internalResult(message), killed: false },
       endedFirst: 'same',
+      transcript: { toPrimary: Buffer.alloc(0), fromPrimary: Buffer.alloc(0) },
     };
   }
 
@@ -363,6 +369,7 @@ export async function runConnected(
       primary: internalResult(message),
       secondary: { ...internalResult(message), killed: false },
       endedFirst: 'same',
+      transcript: { toPrimary: Buffer.alloc(0), fromPrimary: Buffer.alloc(0) },
     };
   }
 
@@ -380,6 +387,10 @@ export async function runConnected(
     let primaryPeakMemKb = 0;
     let sampling = false;
     let cancelSubscription: { dispose(): void } | undefined;
+    const toPrimaryChunks: Buffer[] = [];
+    const fromPrimaryChunks: Buffer[] = [];
+    let toPrimaryBytes = 0;
+    let fromPrimaryBytes = 0;
 
     const finishIfBothDone = (): void => {
       if (settled || !primaryDone || !secondaryDone) {
@@ -420,6 +431,10 @@ export async function runConnected(
           killed: secondaryKilled,
         },
         endedFirst,
+        transcript: {
+          toPrimary: Buffer.concat(toPrimaryChunks),
+          fromPrimary: Buffer.concat(fromPrimaryChunks),
+        },
       });
     };
 
@@ -506,6 +521,10 @@ export async function runConnected(
 
     childPrimary.stdout?.on('data', (chunk: Buffer) => {
       primaryOutputBytes += chunk.length;
+      if (fromPrimaryBytes < TRANSCRIPT_LIMIT_BYTES) {
+        fromPrimaryChunks.push(chunk);
+        fromPrimaryBytes += chunk.length;
+      }
       if (primaryOutputBytes > outputLimitBytes) {
         primaryTruncated = true;
         killPrimary('output');
@@ -514,6 +533,10 @@ export async function runConnected(
       writeTo(childSecondary.stdin, chunk);
     });
     childSecondary.stdout?.on('data', (chunk: Buffer) => {
+      if (toPrimaryBytes < TRANSCRIPT_LIMIT_BYTES) {
+        toPrimaryChunks.push(chunk);
+        toPrimaryBytes += chunk.length;
+      }
       writeTo(childPrimary.stdin, chunk);
     });
 

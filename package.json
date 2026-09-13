@@ -160,6 +160,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "testlib.h 所在目录或文件。留空则按「题目包 extra/ → 工作区 .verdict/testlib/」的顺序查找（SPEC §6.6）。"
+        },
+        "verdict.debugStopAtEntry": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "调试时先停在程序入口（方便从第一行单步）。关掉则只在你自己的断点处停。"
         }
       }
     }

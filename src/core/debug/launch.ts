@@ -20,6 +20,8 @@ export interface DebugSessionConfig {
   console: 'internalConsole' | 'integratedTerminal';
   MIMode?: 'gdb' | 'lldb';
   setupCommands?: DebugSetupCommand[];
+  /** 启动后先停在入口，方便从第一行开始单步。 */
+  stopAtEntry?: boolean;
   /** 调试器特有的额外字段（例如 debugpy 的 justMyCode）。 */
   extra?: Record<string, unknown>;
 }
@@ -33,6 +35,8 @@ export interface DebugLaunchInput {
   cwd: string;
   /** 测试点输入文件；给了就尝试把它接到被测程序的 stdin 上。 */
   inputPath?: string;
+  /** 启动后停在入口（cpptools 用 stopAtEntry，debugpy 用 stopOnEntry）。 */
+  stopAtEntry?: boolean;
   kind: CompilerKind;
   platform: NodeJS.Platform;
   /** 调试会话显示名，例如 "Verdict：调试 #1"。 */
@@ -74,7 +78,7 @@ export function buildDebugSession(input: DebugLaunchInput): DebugSessionConfig {
       externalConsole: false,
       console: 'integratedTerminal',
       // 竞赛代码没有「库代码」的概念，跳过 justMyCode 免得单步时被拦在库里。
-      extra: { justMyCode: false },
+      extra: { justMyCode: false, ...(input.stopAtEntry === true ? { stopOnEntry: true } : {}) },
     };
   }
 
@@ -99,6 +103,7 @@ export function buildDebugSession(input: DebugLaunchInput): DebugSessionConfig {
     console: 'internalConsole',
     ...(msvc ? {} : { MIMode: miMode }),
     ...(setup === undefined ? {} : { setupCommands: setup }),
+    ...(input.stopAtEntry === true ? { stopAtEntry: true } : {}),
   };
 }
 

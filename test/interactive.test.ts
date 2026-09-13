@@ -4,9 +4,11 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { compile, detectToolchain, type Toolchain } from '../src/core/compiler';
 import { decideInteractiveVerdict } from '../src/core/compare/interactive';
+import { prepareComparator } from '../src/core/compare/prepare';
 import { loadProblem } from '../src/core/problem/package';
 import { createSandbox, type ConnectedRunResult, type RunResult } from '../src/core/sandbox/sandbox';
 import { judgeProblem } from '../src/core/judge/judge';
+import { checkerLimits } from '../src/core/model';
 import type { JudgeOutcome } from '../src/engineFacade';
 
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-interactive-'));
@@ -205,6 +207,46 @@ async function judgeWith(root: string, source: string): Promise<JudgeOutcome> {
 }
 
 describe('交互题端到端（真对拍）', () => {
+  it('录得下交互记录：调试交互题就靠它重放（交互器发来的提示）', async () => {
+    if (!available || toolchain === null) {
+      return;
+    }
+    const root = makeInteractiveProblem();
+    const pkg = await loadProblem(root);
+    const prepared = await prepareComparator(pkg.problem.comparator, {
+      packageRoot: pkg.rootDir,
+      toolchain,
+      sandbox,
+      limits: checkerLimits(pkg.problem.limits),
+      cacheDir,
+      testlibDir: null,
+    });
+    if ('error' in prepared || prepared.interactive === undefined) {
+      throw new Error('交互器没准备好');
+    }
+
+    const sourcePath = path.join(root, 'solve.cpp');
+    fs.writeFileSync(sourcePath, BINARY_SEARCH);
+    const compiled = await compile(toolchain, sourcePath, { cacheDir });
+    if (!compiled.ok) {
+      throw new Error('选手程序编译失败');
+    }
+
+    const outcome = await prepared.interactive.run(
+      compiled.runCmd,
+      Buffer.from('42\n'),
+      Buffer.from('42\n'),
+      pkg.problem.limits,
+    );
+
+    // 交互器发给选手的那串提示就是要重放的内容：最后一定是 "ok"（猜中了）。
+    const tape = outcome.transcript.toPrimary.toString('utf8');
+    expect(tape).toContain('bigger');
+    expect(tape.trim().endsWith('ok')).toBe(true);
+    // 选手发出去的内容也在记录里，复盘时两边都看得到。
+    expect(outcome.transcript.fromPrimary.toString('utf8')).toContain('50');
+  });
+
   it('二分猜数字判 AC', async () => {
     if (!available) {
       return;
