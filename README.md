@@ -24,6 +24,10 @@ pnpm package                                                    # 生成 dist/ve
 code --install-extension dist/verdict-0.0.1.vsix                # 安装
 ```
 
+> macOS 上如果提示 `command not found: code`：VS Code 里按 `Cmd+Shift+P`，执行
+> `Shell Command: Install 'code' command in PATH`，然后重开终端。临时用一次的话，
+> 直接写全路径也行：`/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`。
+
 想改代码：`pnpm install`，在 VS Code 里打开仓库按 `F5` 启动扩展开发宿主。
 
 ### 六十秒试一遍
