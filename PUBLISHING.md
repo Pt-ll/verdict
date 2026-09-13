@@ -9,7 +9,8 @@
 所以这三样是硬要求：
 
 1. **README.md** — 有（仓库根目录），市场页直接用它。
-2. **图标** — 有（`media/icon.png`，128×128 PNG，由 `node scripts/icon.js` 生成）。
+2. **图标** — 有（`media/icon.png`，128×128 RGBA PNG；源图留在 `assets/icon-source.png`，
+   想换图标时从源图导出 128×128 覆盖它即可）。
 3. **`repository` 字段** — 有（指向 GitHub）。缺了它 `vsce` 会报错。
 
 还有两样建议、但需要你自己决定：

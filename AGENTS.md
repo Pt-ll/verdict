@@ -42,7 +42,6 @@ pnpm lint           # eslint（配置只有 eslint.config.mjs 一个文件）
 pnpm test           # vitest 单测：纯 Node，不起 VSCode（单测超时 30s，见下）
 pnpm test:integration  # 真实扩展宿主里跑 test/integration/index.js
 pnpm package        # 打包 VSIX（自带打包器，零依赖；见 SPEC §17.3）
-node scripts/icon.js  # 重新生成媒体图标（改了 src/tools/icon.ts 之后跑）
 ```
 
 调试：在 VSCode 中打开本目录，按 `F5` 启动扩展开发宿主。

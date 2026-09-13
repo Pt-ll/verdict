@@ -145,7 +145,6 @@ pnpm lint             # eslint
 pnpm test             # vitest 单测（纯 Node，不起 VSCode）
 pnpm test:integration # 真实扩展宿主里跑 test/integration/index.js
 pnpm package          # 打包 VSIX（自带打包器，零依赖）
-node scripts/icon.js  # 重新生成图标
 ```
 
 想连真实调试会话一起验（会真的拉起 lldb 与 cpptools）：
