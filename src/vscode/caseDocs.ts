@@ -21,6 +21,7 @@ const MAX_DOCUMENTS = 64;
  */
 export class CaseDocumentStore implements vscode.TextDocumentContentProvider {
   private readonly content = new Map<string, string>();
+  private readonly lastCases = new Map<string, CaseResult[]>();
 
   /** 注册 provider；由 context.subscriptions 负责释放。 */
   register(context: vscode.ExtensionContext): void {
@@ -44,6 +45,12 @@ export class CaseDocumentStore implements vscode.TextDocumentContentProvider {
       this.put(problemId, item.test, 'answer', item.answer);
     }
     this.evictOldest();
+    this.lastCases.set(problemId, cases);
+  }
+
+  /** 最近一次评测某个题目的逐点结果；「对比输出」用它列出可选的测试点。 */
+  casesOf(problemId: string): CaseResult[] {
+    return this.lastCases.get(problemId) ?? [];
   }
 
   /**

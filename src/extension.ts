@@ -5,6 +5,7 @@ import { registerCommands } from './vscode/commands';
 import { JudgeCodeLensProvider } from './vscode/codelens';
 import { DiagnosticsPublisher } from './vscode/diagnostics';
 import { VerdictOutput } from './vscode/output';
+import { registerProblemCommands } from './vscode/problemCommands';
 import { VerdictStatusBar } from './vscode/statusBar';
 import { registerTesting } from './vscode/testing';
 
@@ -39,17 +40,29 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
   const caseDocs = new CaseDocumentStore();
   caseDocs.register(context);
   const commands = registerCommands({ context, output, status, diagnostics, caseDocs });
+  // 改题目包的命令要刷新 Testing 树，而 Testing 跑测试又要用命令的评测入口——
+  // 用一个小 hooks 对象打破这个环：先占位，两边都装配好之后再填上真正的实现。
+  const hooks: { refreshTests: () => Promise<void> } = {
+    refreshTests: async () => undefined,
+  };
+  const problemCommands = registerProblemCommands({
+    output,
+    caseDocs,
+    refreshTests: () => hooks.refreshTests(),
+  });
   const testing = registerTesting({
     output,
     judgeInPackage: (document, problemRoot, token) =>
       commands.judgeDocumentInPackage(document, problemRoot, token),
   });
+  hooks.refreshTests = () => testing.refresh();
 
   context.subscriptions.push(
     output,
     status,
     diagnostics,
     ...commands.disposables,
+    ...problemCommands,
     ...testing.disposables,
     vscode.languages.registerCodeLensProvider(
       [

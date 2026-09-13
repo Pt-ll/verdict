@@ -182,6 +182,11 @@ Verdict 是一个 VSCode 扩展：把 OI / ICPC 风格的**本地评测系统**�
 - `debug` profile：用该测试点输入启动调试会话。
 - 失败态在 Testing 侧边栏可见，可单独重跑。
 
+> 实现进度：树结构与 `run` profile 已在 M2 落地（`src/vscode/testing.ts`）。
+> `debug` profile 尚未实现——它要依赖 cpptools 与各平台调试器配置（§4.8），
+> 单独做一步比塞进 M2 里稳妥；M2 的交付清单（§12）里也只有 Testing API 本体。
+> 另外 M2 的树是「题目 > 子任务 > 测试点」，比赛那一层（§5.7）属于 M3。
+
 ### 4.5 原生 diff
 
 WA 时执行 `vscode.commands.executeCommand('vscode.diff', outputUri, answerUri, ...)`，两侧优先指向虚拟文档（见 §4.6），并显示首个不同行号。

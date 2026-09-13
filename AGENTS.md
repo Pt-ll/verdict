@@ -62,6 +62,8 @@ Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2
 
 - M1 骨架 + 编译运行 + 单点判定 ✅（2026-09-12 三平台 CI 全绿）
 - M2 题目包 + 测试点 + 子任务 + Testing/diff ← 当前
+  （题目包读写、子任务计分、Testing 树、verdict:// 虚拟文档、原生 diff、四个编辑命令都已落地；
+  还差 Testing 的 debug profile，见 SPEC §4.4 的说明。）
 - M3 比赛 + 选手 + 重测 + 榜单 + HTML
 - M4 交互题 + testlib SPJ + 导入导出 + 打包
 

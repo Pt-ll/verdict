@@ -4,6 +4,7 @@ import type { CaseResult, Subtask, SubtaskResult, TestCase } from '../core/model
 import { loadProblem, PROBLEM_FILE, type ProblemPackage } from '../core/problem/package';
 import type { JudgeOutcome } from '../engineFacade';
 import type { VerdictOutput } from './output';
+import { discoverProblemRoots } from './workspace';
 
 const CONTROLLER_ID = 'verdict';
 const CONTROLLER_LABEL = 'Verdict';
@@ -60,14 +61,13 @@ export function registerTesting(deps: TestingDeps): TestingHandle {
   }
 
   async function loadPackages(): Promise<ProblemPackage[]> {
-    const files = await vscode.workspace.findFiles(`**/${PROBLEM_FILE}`, '**/node_modules/**');
     const packages: ProblemPackage[] = [];
-    for (const file of files) {
+    for (const root of await discoverProblemRoots()) {
       try {
-        packages.push(await loadProblem(path.dirname(file.fsPath)));
+        packages.push(await loadProblem(root));
       } catch (err) {
         // 一个坏掉的题目包不该让整棵树消失：记一条日志，其余题目照常显示。
-        deps.output.error(`题目包 ${path.dirname(file.fsPath)} 无法加载：${messageOf(err)}`);
+        deps.output.error(`题目包 ${root} 无法加载：${messageOf(err)}`);
       }
     }
     return packages.sort((left, right) =>

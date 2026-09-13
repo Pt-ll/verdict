@@ -38,6 +38,22 @@
       {
         "command": "verdict.cancel",
         "title": "Verdict: 取消当前任务"
+      },
+      {
+        "command": "verdict.addTests",
+        "title": "Verdict: 导入测试点"
+      },
+      {
+        "command": "verdict.configureSubtasks",
+        "title": "Verdict: 配置子任务"
+      },
+      {
+        "command": "verdict.setLimits",
+        "title": "Verdict: 设置限制"
+      },
+      {
+        "command": "verdict.showDiff",
+        "title": "Verdict: 对比输出"
       }
     ],
     "configuration": {

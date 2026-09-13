@@ -6,7 +6,16 @@ const vscode = require('vscode');
 /** 扩展 ID = package.json 的 `${publisher}.${name}`。 */
 const EXTENSION_ID = 'verdict-dev.verdict';
 
-const COMMANDS = ['verdict.checkEnv', 'verdict.judgeCurrent', 'verdict.cancel'];
+const COMMANDS = [
+  'verdict.checkEnv',
+  'verdict.judgeCurrent',
+  'verdict.cancel',
+  // M2 的编辑类命令：只验证注册（它们要弹对话框，不适合在无头宿主里跑完整流程）。
+  'verdict.addTests',
+  'verdict.configureSubtasks',
+  'verdict.setLimits',
+  'verdict.showDiff',
+];
 
 /**
  * 每个样例的期望判定。

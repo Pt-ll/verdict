@@ -315,7 +315,7 @@ function readSubtasks(raw: unknown, issues: ProblemIssues): Subtask[] {
 async function readTests(raw: unknown, ctx: BuildContext): Promise<TestCase[]> {
   const { issues } = ctx;
   if (raw === undefined) {
-    return scanPackageTests(ctx);
+    return scanPackageTests(ctx.rootDir, ctx.dataDir);
   }
   if (!Array.isArray(raw)) {
     issues.add(`tests 必须是数组，现在是 ${describe(raw)}`);
@@ -323,7 +323,7 @@ async function readTests(raw: unknown, ctx: BuildContext): Promise<TestCase[]> {
   }
   if (raw.length === 0) {
     // 空数组按「没写」处理：想自动扫描的人不该因为写了 [] 而没有测试点。
-    return scanPackageTests(ctx);
+    return scanPackageTests(ctx.rootDir, ctx.dataDir);
   }
 
   const tests: TestCase[] = [];
@@ -375,14 +375,18 @@ async function readTests(raw: unknown, ctx: BuildContext): Promise<TestCase[]> {
   return tests;
 }
 
-/** tests 没写时扫描 data/：投入 1.in + 1.out 就能用，符合「约定优于配置」。 */
-async function scanPackageTests(ctx: BuildContext): Promise<TestCase[]> {
-  const scanned = await scanTests(ctx.dataDir);
+/**
+ * 扫描 data/，返回路径相对题目包根目录的测试点。
+ *
+ * 没有 problem.json 的 tests 也能用：丢进去 1.in + 1.out 就是一个测试点（约定优于配置）。
+ */
+export async function scanPackageTests(rootDir: string, dataDir: string): Promise<TestCase[]> {
+  const scanned = await scanTests(dataDir);
   return scanned.map((test) => ({
     id: test.id,
-    // scanTests 给的是相对 data/ 的名字，统一换算成相对题目包根目录（SPEC §6.3 写 "data/1.in"）。
-    input: toPackageRelative(ctx.rootDir, path.join(ctx.dataDir, test.input)),
-    answer: toPackageRelative(ctx.rootDir, path.join(ctx.dataDir, test.answer)),
+    // scanTests 给的是相对 data/ 的名字，统一换算成题目包根目录（SPEC §6.3 写 "data/1.in"）。
+    input: toPackageRelative(rootDir, path.join(dataDir, test.input)),
+    answer: toPackageRelative(rootDir, path.join(dataDir, test.answer)),
   }));
 }
 
