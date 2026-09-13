@@ -23,6 +23,7 @@ type JudgedOutcome = Extract<JudgeOutcome, { kind: 'judged' }>;
 import type { DiagnosticsPublisher } from './diagnostics';
 import type { VerdictOutput } from './output';
 import type { VerdictStatusBar } from './statusBar';
+import type { CaseDocumentStore } from './caseDocs';
 
 export const COMMAND_CHECK_ENV = 'verdict.checkEnv';
 export const COMMAND_JUDGE_CURRENT = 'verdict.judgeCurrent';
@@ -35,6 +36,8 @@ export interface CommandDeps {
   output: VerdictOutput;
   status: VerdictStatusBar;
   diagnostics: DiagnosticsPublisher;
+  /** 评测结果的虚拟文档与 diff；由 extension.ts 装配。 */
+  caseDocs: CaseDocumentStore;
 }
 
 export interface VerdictCommands {
@@ -280,6 +283,11 @@ class JudgeRunner {
         }
         logJudged(output, outcome);
 
+        // 记下这一轮输出，WA 时才有东西可以 diff。
+        // 没有题目包时用源文件名当标识：M1 的约定式数据也能享受到 diff。
+        const owner = outcome.problemId ?? path.basename(sourcePath, path.extname(sourcePath));
+        this.deps.caseDocs.record(owner, outcome.cases);
+
         const total = outcome.cases.length;
         const accepted = outcome.cases.filter((item) => item.verdict === 'AC').length;
         const worst = worstVerdict(outcome.cases);
@@ -304,10 +312,38 @@ class JudgeRunner {
             }
           });
         }
+
+        await this.openDiffIfFailed(owner, outcome);
         return;
       }
     }
   }
+
+  /**
+   * WA / PC 时自动打开 diff（SPEC §4.5）。
+   *
+   * 只挑第一个失败点：一次评测可能几十个点，全打开会把编辑器铺满，反而什么都看不见。
+   */
+  private async openDiffIfFailed(owner: string, outcome: JudgedOutcome): Promise<void> {
+    if (outcome.cancelled || !readAutoDiffSetting()) {
+      return;
+    }
+    const failed = outcome.cases.find(
+      (item) => item.verdict === 'WA' || item.verdict === 'PC',
+    );
+    if (failed === undefined) {
+      return;
+    }
+    const where = failed.firstDiffLine === undefined ? '' : `（第 ${failed.firstDiffLine} 行不同）`;
+    this.deps.output.info(`打开 diff：测试点 ${failed.test}${where}`);
+    await this.deps.caseDocs.openDiff(owner, failed.test, failed.firstDiffLine);
+  }
+}
+
+function readAutoDiffSetting(): boolean {
+  return (
+    vscode.workspace.getConfiguration(SETTINGS_SECTION).get<boolean>('autoDiff') !== false
+  );
 }
 
 function readCompilerSetting(): string {

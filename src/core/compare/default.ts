@@ -3,21 +3,17 @@ import type { CompareResult, ComparatorInput } from './compare';
 /** 行尾空白字符：空格、制表符、CR。 */
 const TRAILING_WHITESPACE = new Set([0x20, 0x09, 0x0d]);
 
-export interface LineCompareOptions {
-  /** 是否在结果里带上首个不同行号（line 模式才有）。 */
-  reportFirstDiffLine: boolean;
-}
-
 /**
  * 按行比较，default 与 line 两种模式共用。
+ *
+ * 两种模式的判定完全一致，也都会带上首个不同行号：逐行走的时候顺手就算出来了，
+ * 而 M2 的「WA 自动打开 diff 并跳过去」正需要它（SPEC §4.5 / §12）。
+ * line 因此退化成 default 的显式写法，保留是为了兼容已有的 problem.json。
  *
  * 全程按字节处理而不是先 decode 成字符串：不同的非法字节序列都会被解码成同一个
  * U+FFFD，那样两份本来不同的输出会被判成相同。SPEC §10 要求非 UTF-8 数据不出错。
  */
-export function compareLines(
-  input: ComparatorInput,
-  options: LineCompareOptions,
-): CompareResult {
+export function compareLines(input: ComparatorInput): CompareResult {
   const actual = splitLines(input.output);
   const expected = splitLines(input.answer);
   const rowCount = Math.max(actual.length, expected.length);
@@ -31,9 +27,7 @@ export function compareLines(
 
     const lineNo = i + 1;
     const detail = describeLineDifference(got, want, lineNo);
-    return options.reportFirstDiffLine
-      ? { verdict: 'WA', scoreRatio: 0, detail, firstDiffLine: lineNo }
-      : { verdict: 'WA', scoreRatio: 0, detail };
+    return { verdict: 'WA', scoreRatio: 0, detail, firstDiffLine: lineNo };
   }
 
   return { verdict: 'AC', scoreRatio: 1, detail: '输出一致' };

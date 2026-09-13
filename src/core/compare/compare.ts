@@ -38,8 +38,7 @@ export function createComparator(config: ComparatorConfig): Comparator {
     case 'line':
       return {
         config,
-        compare: async (input) =>
-          compareLines(input, { reportFirstDiffLine: config.mode === 'line' }),
+        compare: async (input) => compareLines(input),
       };
     case 'real':
       return { config, compare: async (input) => compareReal(input, config) };

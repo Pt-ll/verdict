@@ -113,8 +113,8 @@ describe('compare/line：额外报告首个不同行号', () => {
     expect((await cmp(LINE_MODE, '1\n', '1\n')).firstDiffLine).toBeUndefined();
   });
 
-  it('default 模式不报行号', async () => {
-    expect((await cmp(DEFAULT_MODE, '1\nx\n', '1\ny\n')).firstDiffLine).toBeUndefined();
+  it('default 模式同样报行号（WA 后要跳到那一行，这个信息本来就是免费的）', async () => {
+    expect((await cmp(DEFAULT_MODE, '1\nx\n', '1\ny\n')).firstDiffLine).toBe(2);
   });
 });
 

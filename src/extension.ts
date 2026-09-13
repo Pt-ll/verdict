@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { JudgeOutcome } from './engineFacade';
+import { CaseDocumentStore } from './vscode/caseDocs';
 import { registerCommands } from './vscode/commands';
 import { JudgeCodeLensProvider } from './vscode/codelens';
 import { DiagnosticsPublisher } from './vscode/diagnostics';
@@ -28,7 +29,9 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
   );
   const status = new VerdictStatusBar();
   const diagnostics = new DiagnosticsPublisher();
-  const commands = registerCommands({ context, output, status, diagnostics });
+  const caseDocs = new CaseDocumentStore();
+  caseDocs.register(context);
+  const commands = registerCommands({ context, output, status, diagnostics, caseDocs });
 
   context.subscriptions.push(
     output,

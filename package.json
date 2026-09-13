@@ -98,6 +98,11 @@
           "type": "number",
           "default": 0.000001,
           "description": "real 比较的相对误差。"
+        },
+        "verdict.autoDiff": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "出现 WA / PC 时自动打开「实际输出 ↔ 标准答案」的原生 diff（SPEC §4.5）。"
         }
       }
     }

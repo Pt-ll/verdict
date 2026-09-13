@@ -17,6 +17,8 @@ const COMMANDS = ['verdict.checkEnv', 'verdict.judgeCurrent', 'verdict.cancel'];
 const JUDGE_CASES = [
   { file: 'ac.cpp', verdict: 'AC', maxTimeMs: 1000 },
   { file: 'wa.cpp', verdict: 'WA', maxTimeMs: 1000 },
+  // 第 3 行才不同：用来验证 diff 定位的是「首个不同行」而不是第 1 行。
+  { file: 'wa-line.cpp', verdict: 'WA' },
   // TLE 的 timeMs 是「启动到被杀」的墙钟时间，含进程启动与杀树开销，会比时限略大，
   // 所以 maxTimeMs 放宽；真正有意义的是 minTimeMs——太小说明根本没跑起来。
   { file: 'tle.cpp', verdict: 'TLE', minTimeMs: 300, maxTimeMs: 2000 },
@@ -52,8 +54,37 @@ async function run() {
     await checkJudgement(api, folder.uri, item);
   }
   await checkCompileError(api, folder.uri);
+  await checkDiff();
 
   console.log('[verdict] 集成测试全部通过');
+}
+
+/**
+ * WA 之后应当自动打开 diff，并把光标放在首个不同行（SPEC §4.5 / §12 M2 验收）。
+ *
+ * 用例顺序保证 wa-line.cpp 是最后一个 WA，所以此刻打开的 diff 就是它。
+ */
+async function checkDiff() {
+  const tabs = vscode.window.tabGroups.all.flatMap((group) => group.tabs);
+  const diffTab = tabs.find((tab) => tab.label.includes('测试点 wa-line'));
+  assert.ok(diffTab, `WA 之后应当自动打开 diff 标签页，实际标签：${tabs.map((t) => t.label).join(' / ')}`);
+
+  const editors = vscode.window.visibleTextEditors.filter(
+    (item) => item.document.uri.scheme === 'verdict',
+  );
+  assert.ok(
+    editors.length > 0,
+    'diff 两侧应当是我们提供的 verdict:// 虚拟文档（SPEC §4.6），实际却是普通文件',
+  );
+
+  // 首个不同行是第 3 行；API 收的是 0 起的行号，所以期望 2。
+  const lines = editors.map((item) => item.selection.start.line);
+  assert.ok(
+    lines.some((line) => line === 2),
+    `diff 应当定位到第 3 行（0 起为 2），实际停在第 ${lines.map((line) => line + 1).join('、')} 行`,
+  );
+
+  console.log('[verdict] WA 自动打开了 diff，并定位到首个不同的第 3 行');
 }
 
 async function checkJudgement(api, root, item) {
