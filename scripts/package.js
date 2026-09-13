@@ -36,16 +36,23 @@ function loadPacker() {
     outfile,
     logLevel: 'warning',
   });
-  return require(outfile);
+  return { dir, packer: require(outfile) };
 }
 
 async function main() {
   build();
-  const { packageVsix } = loadPacker();
-  const result = await packageVsix({ root });
-  const kiloBytes = (result.bytes / 1024).toFixed(1);
-  console.log(`已打包：${path.relative(root, result.outFile)}（${result.entries} 个文件，${kiloBytes}KB）`);
-  console.log('安装：code --install-extension ' + path.relative(root, result.outFile));
+  const { dir, packer } = loadPacker();
+  try {
+    const result = await packer.packageVsix({ root });
+    const kiloBytes = (result.bytes / 1024).toFixed(1);
+    console.log(
+      `已打包：${path.relative(root, result.outFile)}（${result.entries} 个文件，${kiloBytes}KB）`,
+    );
+    console.log('安装：code --install-extension ' + path.relative(root, result.outFile));
+  } finally {
+    // 临时目录用完就删：不然每打一次包就在系统临时目录里留一份（实测攒了十几个）。
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 main().catch((err) => {
