@@ -103,6 +103,28 @@ npx ovsx publish -p <你的 token> dist/verdict-0.0.1.vsix
 | 图标不显示 | 不是 128×128 的 PNG，或 `package.json` 里忘了写 `icon` 字段 |
 | 打包后体积异常 | 把 `node_modules/` 之类打进去了；本仓库的打包器按白名单来，不会有这个问题 |
 
+## 发布过程中真实遇到过的两类报错
+
+这两条是首次发布时实际撞上的，记下来省得再摸索一遍。
+
+**「所选的用户帐户在租户"Microsoft Services"中不存在…需要先将该帐户添加为该租户的外部用户」**
+
+生成 PAT 时出现。意思是这个微软账号不属于任何 Azure DevOps 组织，而发布权限挂在
+Microsoft Services 租户下。两个常见原因：
+
+1. 这个账号从没建过 Azure DevOps 组织 → 去 <https://dev.azure.com> 用**同一个账号**
+   创建一个（免费），再从这个组织里生成 PAT。
+2. 登录 Azure DevOps 和登录市场的不是同一个账号 → 开隐私窗口重新登录，保证两边一致。
+
+另一个更省事的选择是**根本不用 PAT**：在市场的 manage 页面用 "New extension → Visual Studio Code"
+直接上传 VSIX。
+
+**TF400898: An Internal Error Occurred. Activity Id: …**
+
+Azure DevOps 服务端的内部错误，与你的操作、与扩展本身都无关（Activity Id 是给微软支持追踪用的）。
+多数是瞬时的：等几分钟重试、换隐私窗口/浏览器重登、顺手看一眼 <https://status.dev.azure.com>。
+如果反复出现，别跟它较劲——改用 Open VSX（完全不需要微软账号），或者等市场后台恢复。
+
 ## 这个仓库当前的状态
 
 - `pnpm package` 产出的 VSIX 已在本机用 `code --install-extension` 装过一次，确认官方安装器
