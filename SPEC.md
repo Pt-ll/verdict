@@ -1182,7 +1182,7 @@ git pull --rebase
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "node ./test/runTest.js",
-    "package": "vsce package"
+    "package": "node scripts/package.js"
   }
 }
 ```
@@ -1219,6 +1219,20 @@ jobs:
 ### 17.3 打包
 
 `pnpm package` 生成**单个平台无关 VSIX**（纯 TS，无原生依赖），可安装于三平台。
+
+实现说明：不用 `vsce`，而是 `scripts/package.js` + `src/tools/vsix.ts` 自己打——VSIX 本质就是一个
+ZIP（`[Content_Types].xml` + `extension.vsixmanifest` + `extension/**`），复用扩展自己的 ZIP 实现
+（`core/zip.ts`，只用 Node 内置 zlib）。这样打包也不需要联网安装任何工具，与「完全离线、零依赖」
+这条前提一致；代价是清单要自己写对，所以有单测盯着（条目、标识、引擎要求、转义），
+并且真的用 `code --install-extension` 装过一次来验证格式能被官方安装器接受。
+
+两个容易踩的点，都写进打包器了：开发用的 `*.map` 不进生产包（体积最大，而且陈旧的那份
+比没有更糟），以及输出写在 `dist/` 下时要跳过 `*.vsix`（否则会把上一次的包打进这一次的包里）。
+
+```bash
+pnpm package                                             # 生成 dist/verdict-<版本>.vsix
+code --install-extension dist/verdict-0.0.1.vsix         # 安装
+```
 
 ---
 

@@ -22,7 +22,7 @@
     "test": "vitest run --testTimeout=30000",
     "test:watch": "vitest --testTimeout=30000",
     "test:integration": "node ./test/runTest.js",
-    "package": "vsce package",
+    "package": "node scripts/package.js",
     "vscode:prepublish": "node esbuild.js --production"
   },
   "contributes": {

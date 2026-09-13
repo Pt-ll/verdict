@@ -15,6 +15,8 @@ Verdict：把 OI/ICPC 风格的本地评测系统做进 VSCode 的扩展。
 - `src/core/**`：平台无关的评测内核，**禁止 `import 'vscode'`**，必须能在纯 Node 下单测。
 - `src/vscode/**`、`src/extension.ts`：唯一允许依赖 VSCode API 的地方，只做注册/展示/弹窗。
 - `src/util/**`：两端共用的纯函数工具。
+- `src/tools/**`：构建期工具（例如打 VSIX）。esbuild 只从 `src/extension.ts` 出发打包，
+  所以它们不会进扩展本体；但照样过 typecheck 与 lint。
 
 ## 三平台约定（强制）
 
@@ -39,7 +41,7 @@ pnpm typecheck      # tsc --noEmit
 pnpm lint           # eslint（配置只有 eslint.config.mjs 一个文件）
 pnpm test           # vitest 单测：纯 Node，不起 VSCode（单测超时 30s，见下）
 pnpm test:integration  # 真实扩展宿主里跑 test/integration/index.js
-pnpm package        # 打包 VSIX
+pnpm package        # 打包 VSIX（自带打包器，零依赖；见 SPEC §17.3）
 ```
 
 调试：在 VSCode 中打开本目录，按 `F5` 启动扩展开发宿主。
