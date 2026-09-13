@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 const TS_FILES = ['src/**/*.ts', 'test/**/*.ts'];
@@ -6,20 +7,16 @@ const TS_FILES = ['src/**/*.ts', 'test/**/*.ts'];
 export default [
   { ignores: ['dist/**', 'node_modules/**', 'testdata/**', '.verdict-out/**'] },
 
-  // 仓库里的脚本（esbuild.js、test/runTest.js）是 CommonJS，单独一套 globals。
+  // 仓库里的脚本（esbuild.js、test/runTest.js、test/integration/index.js）是 CommonJS，
+  // 单独一套 globals。这里用 globals.node 而不是手写清单：手写的漏一个就红一次
+  // （2026-09-13 就漏了 setTimeout，三平台 CI 一起红），而这个包本来就是管这件事的。
   {
     files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
     ...js.configs.recommended,
     languageOptions: {
       sourceType: 'commonjs',
       ecmaVersion: 2022,
-      globals: {
-        require: 'readonly',
-        module: 'writable',
-        __dirname: 'readonly',
-        process: 'readonly',
-        console: 'readonly',
-      },
+      globals: { ...globals.node },
     },
   },
 

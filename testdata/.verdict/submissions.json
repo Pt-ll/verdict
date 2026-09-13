@@ -2,14 +2,14 @@
   "version": 1,
   "submissions": [
     {
-      "id": "alice-A-1789275450665",
+      "id": "alice-A-1789275870867",
       "contestant": "alice",
       "problem": "A",
       "source": "/Users/pt.ll/Desktop/Verdict/testdata/players/alice/A.cpp",
       "language": "cpp",
       "verdict": "AC",
       "rejudgeCount": 0,
-      "time": "2026-09-13T04:57:30.665Z",
+      "time": "2026-09-13T05:04:30.867Z",
       "result": {
         "problem": "A",
         "score": 100,
@@ -44,7 +44,7 @@
             "test": "2",
             "verdict": "AC",
             "score": 70,
-            "timeMs": 6,
+            "timeMs": 5,
             "memoryKb": 0,
             "exitCode": 0,
             "signal": null,
@@ -54,19 +54,19 @@
       }
     },
     {
-      "id": "alice-B-1789275450679",
+      "id": "alice-B-1789275870882",
       "contestant": "alice",
       "problem": "B",
       "source": "/Users/pt.ll/Desktop/Verdict/testdata/players/alice/B.cpp",
       "language": "cpp",
       "verdict": "AC",
       "rejudgeCount": 0,
-      "time": "2026-09-13T04:57:30.679Z",
+      "time": "2026-09-13T05:04:30.882Z",
       "result": {
         "problem": "B",
         "score": 100,
         "maxScore": 100,
-        "elapsedMs": 6,
+        "elapsedMs": 5,
         "subtasks": [],
         "cases": [
           {
@@ -83,19 +83,19 @@
       }
     },
     {
-      "id": "bob-A-1789275450686",
+      "id": "bob-A-1789275870888",
       "contestant": "bob",
       "problem": "A",
       "source": "/Users/pt.ll/Desktop/Verdict/testdata/players/bob/A.cpp",
       "language": "cpp",
       "verdict": "WA",
       "rejudgeCount": 1,
-      "time": "2026-09-13T04:57:30.686Z",
+      "time": "2026-09-13T05:04:30.888Z",
       "result": {
         "problem": "A",
         "score": 30,
         "maxScore": 100,
-        "elapsedMs": 10,
+        "elapsedMs": 9,
         "subtasks": [
           {
             "id": "1",
@@ -115,7 +115,7 @@
             "test": "1",
             "verdict": "AC",
             "score": 30,
-            "timeMs": 6,
+            "timeMs": 4,
             "memoryKb": 0,
             "exitCode": 0,
             "signal": null,
@@ -125,7 +125,7 @@
             "test": "2",
             "verdict": "WA",
             "score": 0,
-            "timeMs": 4,
+            "timeMs": 5,
             "memoryKb": 0,
             "exitCode": 0,
             "signal": null,
@@ -136,14 +136,14 @@
       }
     },
     {
-      "id": "bob-B-1789275450696",
+      "id": "bob-B-1789275870900",
       "contestant": "bob",
       "problem": "B",
       "source": "/Users/pt.ll/Desktop/Verdict/testdata/players/bob/B.cpp",
       "language": "cpp",
       "verdict": "AC",
       "rejudgeCount": 0,
-      "time": "2026-09-13T04:57:30.696Z",
+      "time": "2026-09-13T05:04:30.900Z",
       "result": {
         "problem": "B",
         "score": 100,
