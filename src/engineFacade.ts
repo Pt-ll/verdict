@@ -14,7 +14,7 @@ import type {
   Problem,
   SubtaskResult,
 } from './core/model';
-import { findProblemRoot, loadProblem } from './core/problem/package';
+import { findProblemRoot, loadProblem, type ProblemPackage } from './core/problem/package';
 import {
   findTestsBesideSource,
   resolveTestFiles,
@@ -104,35 +104,7 @@ export async function judgeSourceFile(
   const packageRoot = await findProblemRoot(path.dirname(sourcePath), options.workspaceRoot);
   if (packageRoot !== null) {
     const pkg = await loadProblem(packageRoot);
-    if (pkg.problem.tests.length === 0) {
-      return {
-        kind: 'no-tests',
-        sourcePath,
-        message:
-          `题目包「${pkg.problem.id}」还没有测试点：把 1.in / 1.out 放进 ${pkg.dataDir}，` +
-          '或在 problem.json 的 tests 里登记。',
-      };
-    }
-
-    const prepared = await prepareRun(sourcePath, options, pkg.problem.limits, token, report);
-    if (!prepared.ok) {
-      return prepared.outcome;
-    }
-
-    const result = await judgeProblem(pkg, prepared.compiled.runCmd, sandbox, token, report);
-    return {
-      kind: 'judged',
-      compile: prepared.compiled,
-      cases: result.cases,
-      subtasks: result.subtasks,
-      score: result.score,
-      maxScore: result.maxScore,
-      problemId: pkg.problem.id,
-      dataDir: pkg.dataDir,
-      elapsedMs: Date.now() - startedAt,
-      cancelled: token?.isCancellationRequested === true,
-      warmedUp: prepared.warmedUp,
-    };
+    return judgeWithProblem(sourcePath, pkg, options, token, report, startedAt);
   }
 
   report('查找测试数据');
@@ -212,6 +184,53 @@ export async function judgeSourceFile(
     dataDir: location.dataDir,
     elapsedMs: Date.now() - startedAt,
     cancelled,
+    warmedUp: prepared.warmedUp,
+  };
+}
+
+/**
+ * 用指定的题目包评测一份源码。
+ *
+ * 「从源码位置向上找题目包」在比赛布局下是不够用的：题目包在 .verdict/problems/<id>/ 下，
+ * 而选手源码在 players/ 里，两者相距很远。Testing 面板与 M3 的比赛流程都走这个入口。
+ */
+export async function judgeWithProblem(
+  sourcePath: string,
+  pkg: ProblemPackage,
+  options: EngineOptions,
+  token?: CancellationTokenLike,
+  onProgress?: (stage: string) => void,
+  startedAt: number = Date.now(),
+): Promise<JudgeOutcome> {
+  const report = onProgress ?? ((): void => undefined);
+
+  if (pkg.problem.tests.length === 0) {
+    return {
+      kind: 'no-tests',
+      sourcePath,
+      message:
+        `题目包「${pkg.problem.id}」还没有测试点：把 1.in / 1.out 放进 ${pkg.dataDir}，` +
+        '或在 problem.json 的 tests 里登记。',
+    };
+  }
+
+  const prepared = await prepareRun(sourcePath, options, pkg.problem.limits, token, report);
+  if (!prepared.ok) {
+    return prepared.outcome;
+  }
+
+  const result = await judgeProblem(pkg, prepared.compiled.runCmd, sandbox, token, report);
+  return {
+    kind: 'judged',
+    compile: prepared.compiled,
+    cases: result.cases,
+    subtasks: result.subtasks,
+    score: result.score,
+    maxScore: result.maxScore,
+    problemId: pkg.problem.id,
+    dataDir: pkg.dataDir,
+    elapsedMs: Date.now() - startedAt,
+    cancelled: token?.isCancellationRequested === true,
     warmedUp: prepared.warmedUp,
   };
 }

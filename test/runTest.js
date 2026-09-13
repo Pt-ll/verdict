@@ -12,7 +12,9 @@ const { spawnSync } = require('node:child_process');
 const { downloadAndUnzipVSCode, runTests } = require('@vscode/test-electron');
 
 const ROOT = path.resolve(__dirname, '..');
-const WORKSPACE = path.join(ROOT, 'testdata', 'itest');
+// 工作区是整个 testdata：itest 里的样例程序走 M1 的约定式查找，
+// problemA 是个完整的题目包，用来验收 Testing 面板与子任务计分。
+const WORKSPACE = path.join(ROOT, 'testdata');
 const TESTS_PATH = path.join(__dirname, 'integration', 'index.js');
 
 /**

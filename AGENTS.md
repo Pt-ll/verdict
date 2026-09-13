@@ -52,7 +52,10 @@ Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2
 - `test/runTest.js`：入口。先 esbuild 打包，再拉起真实扩展宿主。扩展宿主优先用本机已装的
   VSCode（开发机常常离线），CI 上回落到 `@vscode/test-electron` 下载。
 - `test/integration/index.js`：断言命令注册、六种判定（AC/WA/TLE/RE/OLE/CE）与编译失败诊断。
-- `testdata/itest/`：样例程序与它自己的 `.vscode/settings.json`（时限 1000ms、内存 256MB、输出 64KB）。
+- `testdata/`（集成测试的工作区）：
+  - `itest/`：走 M1 约定式查找的样例程序（AC/WA/TLE/RE/OLE/CE + diff 行号）。
+  - `problemA/`：一个完整题目包，用来验收 Testing 面板与子任务计分。
+  - `.vscode/settings.json`：时限 1000ms、内存 256MB、输出 64KB。
   改样例时要同步改 `test/integration/index.js` 里的期望表。
 
 ## 里程碑（见 SPEC §12）

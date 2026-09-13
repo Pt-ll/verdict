@@ -14,16 +14,17 @@ const COMMANDS = ['verdict.checkEnv', 'verdict.judgeCurrent', 'verdict.cancel'];
  * AC/WA 验证「编译 + 运行 + 比较器」，TLE/RE/OLE 验证「限额与信号判定」，
  * 合起来就是 M1 的验收清单。时限来自 testdata/itest/.vscode/settings.json。
  */
+// 路径相对工作区根目录（testdata/），所以走约定式查找的样例都带 itest/ 前缀。
 const JUDGE_CASES = [
-  { file: 'ac.cpp', verdict: 'AC', maxTimeMs: 1000 },
-  { file: 'wa.cpp', verdict: 'WA', maxTimeMs: 1000 },
+  { file: 'itest/ac.cpp', verdict: 'AC', maxTimeMs: 1000 },
+  { file: 'itest/wa.cpp', verdict: 'WA', maxTimeMs: 1000 },
   // 第 3 行才不同：用来验证 diff 定位的是「首个不同行」而不是第 1 行。
-  { file: 'wa-line.cpp', verdict: 'WA' },
+  { file: 'itest/wa-line.cpp', verdict: 'WA' },
   // TLE 的 timeMs 是「启动到被杀」的墙钟时间，含进程启动与杀树开销，会比时限略大，
   // 所以 maxTimeMs 放宽；真正有意义的是 minTimeMs——太小说明根本没跑起来。
-  { file: 'tle.cpp', verdict: 'TLE', minTimeMs: 300, maxTimeMs: 2000 },
-  { file: 're.cpp', verdict: 'RE' },
-  { file: 'ole.cpp', verdict: 'OLE' },
+  { file: 'itest/tle.cpp', verdict: 'TLE', minTimeMs: 300, maxTimeMs: 2000 },
+  { file: 'itest/re.cpp', verdict: 'RE' },
+  { file: 'itest/ole.cpp', verdict: 'OLE' },
 ];
 
 async function run() {
@@ -55,6 +56,7 @@ async function run() {
   }
   await checkCompileError(api, folder.uri);
   await checkDiff();
+  await checkProblemPackage(api, folder.uri);
 
   console.log('[verdict] 集成测试全部通过');
 }
@@ -69,8 +71,11 @@ async function checkDiff() {
   const diffTab = tabs.find((tab) => tab.label.includes('测试点 wa-line'));
   assert.ok(diffTab, `WA 之后应当自动打开 diff 标签页，实际标签：${tabs.map((t) => t.label).join(' / ')}`);
 
+  // 只看 wa-line 这一对虚拟文档：后面还有其他 diff 会打开，别让它们替这条断言作证。
   const editors = vscode.window.visibleTextEditors.filter(
-    (item) => item.document.uri.scheme === 'verdict',
+    (item) =>
+      item.document.uri.scheme === 'verdict' &&
+      decodeURIComponent(item.document.uri.path).includes('wa-line'),
   );
   assert.ok(
     editors.length > 0,
@@ -85,6 +90,66 @@ async function checkDiff() {
   );
 
   console.log('[verdict] WA 自动打开了 diff，并定位到首个不同的第 3 行');
+}
+
+/**
+ * 题目包与 Testing 面板（SPEC §4.4 / §12 M2）。
+ *
+ * 树结构和判定都走面板真正的入口（runTestingItems 就是运行按钮调的那段代码），
+ * 不另开一条测试专用的捷径，否则测过的和用户用的就是两回事了。
+ */
+async function checkProblemPackage(api, root) {
+  await api.refreshTesting();
+  const problems = api.testingItems();
+  const problem = problems.find((item) => item.id.includes('problemA'));
+  assert.ok(
+    problem,
+    `Testing 树里应当出现 testdata/problemA，实际是：${problems.map((item) => item.label).join(' / ') || '（空）'}`,
+  );
+  assert.equal(problem.label, 'A. 求和');
+
+  const subtasks = childrenOf(problem);
+  assert.deepEqual(
+    subtasks.map((item) => item.label),
+    ['子任务 1', '子任务 2'],
+    '题目下应当按子任务分组',
+  );
+  assert.deepEqual(childrenOf(subtasks[0]).map((item) => item.label), ['#1']);
+  assert.deepEqual(childrenOf(subtasks[1]).map((item) => item.label), ['#2']);
+  console.log('[verdict] Testing 树：A. 求和 > 子任务 1(#1) / 子任务 2(#2)');
+
+  await openSource(root, 'problemA/solve.cpp');
+  const full = await api.runTestingItems(subtasks);
+  assert.ok(full !== null, '跑测试应当拿到评测结果');
+  assert.equal(full.kind, 'judged', `期望 judged，实际 ${full.kind}${detailOf(full)}`);
+  assert.equal(full.score, 100, `正确程序应当满分，实际 ${full.score}/${full.maxScore}`);
+  assert.deepEqual(full.subtasks.map((item) => item.status), ['full', 'full']);
+
+  // 只写对一半的程序：小数据过、大数据溢出，应当拿到第 1 个子任务的 30 分。
+  await openSource(root, 'problemA/solve-wrong.cpp');
+  const partial = await api.runTestingItems(subtasks);
+  assert.ok(partial !== null, '跑测试应当拿到评测结果');
+  assert.equal(partial.kind, 'judged', `期望 judged，实际 ${partial.kind}${detailOf(partial)}`);
+  assert.equal(
+    partial.score,
+    30,
+    `溢出程序应当拿 30 分，实际 ${partial.score}/${partial.maxScore}`,
+  );
+  assert.deepEqual(partial.subtasks.map((item) => item.status), ['full', 'none']);
+  console.log('[verdict] 题目包评测：正确程序 100/100，溢出程序 30/100（子任务 1 满分、子任务 2 未得分）');
+}
+
+function childrenOf(item) {
+  const items = [];
+  item.children.forEach((child) => items.push(child));
+  return items;
+}
+
+async function openSource(root, relative) {
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(root, relative));
+  // 面板跑测试时用的是「当前打开的源文件」，所以这里必须真的把它显示出来。
+  await vscode.window.showTextDocument(document);
+  return document;
 }
 
 async function checkJudgement(api, root, item) {
@@ -126,7 +191,8 @@ async function checkJudgement(api, root, item) {
 }
 
 async function checkCompileError(api, root) {
-  const outcome = await judge(api, root, 'ce.cpp');
+  const relative = 'itest/ce.cpp';
+  const outcome = await judge(api, root, relative);
 
   assert.equal(
     outcome.kind,
@@ -134,7 +200,7 @@ async function checkCompileError(api, root) {
     `ce.cpp：期望 kind=compile-failed，实际 ${outcome.kind}${detailOf(outcome)}`,
   );
 
-  const uri = vscode.Uri.joinPath(root, 'ce.cpp');
+  const uri = vscode.Uri.joinPath(root, relative);
   const errors = vscode.languages
     .getDiagnostics(uri)
     .filter((item) => item.severity === vscode.DiagnosticSeverity.Error);

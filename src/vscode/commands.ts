@@ -10,10 +10,12 @@ import {
 } from '../core/compiler';
 import { runProcess } from '../util/process';
 import { DEFAULT_LIMITS, type ComparatorConfig, type Limits, type Verdict } from '../core/model';
-import type { CaseResult, SubtaskResult } from '../core/model';
+import type { CancellationTokenLike, CaseResult, SubtaskResult } from '../core/model';
+import { loadProblem } from '../core/problem/package';
 import {
   clearToolchainCache,
   judgeSourceFile,
+  judgeWithProblem,
   type EngineOptions,
   type JudgeOutcome,
 } from '../engineFacade';
@@ -49,6 +51,12 @@ export interface VerdictCommands {
    * 因此这条链路上的弹窗一律不 await（见 reportOutcome 的说明），否则测试会挂到超时。
    */
   judgeDocument(document: vscode.TextDocument): Promise<JudgeOutcome | null>;
+  /** 用指定题目包评测；problemRoot 是 problem.json 所在目录。 */
+  judgeDocumentInPackage(
+    document: vscode.TextDocument,
+    problemRoot: string,
+    token?: vscode.CancellationToken,
+  ): Promise<JudgeOutcome | null>;
 }
 
 export function registerCommands(deps: CommandDeps): VerdictCommands {
@@ -60,6 +68,8 @@ export function registerCommands(deps: CommandDeps): VerdictCommands {
       vscode.commands.registerCommand(COMMAND_CANCEL, () => run.cancel()),
     ],
     judgeDocument: (document) => run.judgeDocument(document),
+    judgeDocumentInPackage: (document, problemRoot, token) =>
+      run.judgeDocumentInPackage(document, problemRoot, token),
   };
 }
 
@@ -160,7 +170,50 @@ class JudgeRunner {
     await this.judgeDocument(document);
   }
 
-  async judgeDocument(document: vscode.TextDocument): Promise<JudgeOutcome | null> {
+  async judgeDocument(
+    document: vscode.TextDocument,
+    externalToken?: vscode.CancellationToken,
+  ): Promise<JudgeOutcome | null> {
+    return this.runJudge(
+      document,
+      (sourcePath, options, token, report) => judgeSourceFile(sourcePath, options, token, report),
+      externalToken,
+    );
+  }
+
+  /**
+   * 用指定的题目包评测一个文档。
+   *
+   * Testing 面板和 M3 的比赛流程都走这里：题目包在 .verdict/problems/ 下，
+   * 选手源码在 players/ 里，光靠源码位置是找不到题目的。
+   * 与 judgeDocument 共用全套加锁/保存/报告逻辑，所以两条入口行为一致：
+   * 都会写进虚拟文档、WA 都会开 diff、都能被「取消当前任务」打断。
+   */
+  async judgeDocumentInPackage(
+    document: vscode.TextDocument,
+    problemRoot: string,
+    externalToken?: vscode.CancellationToken,
+  ): Promise<JudgeOutcome | null> {
+    return this.runJudge(
+      document,
+      async (sourcePath, options, token, report) => {
+        const pkg = await loadProblem(problemRoot);
+        return judgeWithProblem(sourcePath, pkg, options, token, report);
+      },
+      externalToken,
+    );
+  }
+
+  private async runJudge(
+    document: vscode.TextDocument,
+    execute: (
+      sourcePath: string,
+      options: EngineOptions,
+      token: CancellationTokenLike,
+      report: (stage: string) => void,
+    ) => Promise<JudgeOutcome>,
+    externalToken?: vscode.CancellationToken,
+  ): Promise<JudgeOutcome | null> {
     const { output, status, diagnostics } = this.deps;
 
     if (document.uri.scheme !== 'file') {
@@ -186,6 +239,11 @@ class JudgeRunner {
 
     const sourcePath = document.uri.fsPath;
     const cancellation = new vscode.CancellationTokenSource();
+    // 外部取消（Testing 面板上点停止）也要能中断这次评测，而不是各管各的。
+    if (externalToken?.isCancellationRequested === true) {
+      cancellation.cancel();
+    }
+    const unsubscribe = externalToken?.onCancellationRequested(() => cancellation.cancel());
     this.activeCancellation = cancellation;
     diagnostics.clear();
     status.setBusy('评测中');
@@ -200,7 +258,7 @@ class JudgeRunner {
         },
         async (progress, progressToken) => {
           progressToken.onCancellationRequested(() => cancellation.cancel());
-          return judgeSourceFile(
+          return execute(
             sourcePath,
             readEngineOptions(this.deps),
             cancellation.token,
@@ -222,6 +280,7 @@ class JudgeRunner {
       void vscode.window.showErrorMessage(`Verdict：评测失败 - ${message}`);
       return null;
     } finally {
+      unsubscribe?.dispose();
       cancellation.dispose();
       this.activeCancellation = undefined;
     }

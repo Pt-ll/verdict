@@ -6,6 +6,7 @@ import { JudgeCodeLensProvider } from './vscode/codelens';
 import { DiagnosticsPublisher } from './vscode/diagnostics';
 import { VerdictOutput } from './vscode/output';
 import { VerdictStatusBar } from './vscode/statusBar';
+import { registerTesting } from './vscode/testing';
 
 /**
  * 暴露给集成测试的 API。
@@ -15,6 +16,12 @@ import { VerdictStatusBar } from './vscode/statusBar';
  */
 export interface VerdictApi {
   judgeDocument(document: vscode.TextDocument): Promise<JudgeOutcome | null>;
+  /** 重建 Testing 树；Promise 在树建好后 resolve。 */
+  refreshTesting(): Promise<void>;
+  /** Testing 树的顶层项（一个题目一项），只读。 */
+  testingItems(): vscode.TestItem[];
+  /** 按 Testing 面板的语义跑一组测试项，返回这次判定的结果。 */
+  runTestingItems(items: vscode.TestItem[]): Promise<JudgeOutcome | null>;
 }
 
 /**
@@ -32,12 +39,18 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
   const caseDocs = new CaseDocumentStore();
   caseDocs.register(context);
   const commands = registerCommands({ context, output, status, diagnostics, caseDocs });
+  const testing = registerTesting({
+    output,
+    judgeInPackage: (document, problemRoot, token) =>
+      commands.judgeDocumentInPackage(document, problemRoot, token),
+  });
 
   context.subscriptions.push(
     output,
     status,
     diagnostics,
     ...commands.disposables,
+    ...testing.disposables,
     vscode.languages.registerCodeLensProvider(
       [
         { language: 'cpp', scheme: 'file' },
@@ -50,7 +63,12 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
 
   output.info('Verdict 已激活。执行命令「Verdict: 检查环境」开始。');
 
-  return { judgeDocument: (document) => commands.judgeDocument(document) };
+  return {
+    judgeDocument: (document) => commands.judgeDocument(document),
+    refreshTesting: () => testing.refresh(),
+    testingItems: () => testing.roots(),
+    runTestingItems: (items) => testing.run(items),
+  };
 }
 
 export function deactivate(): void {
