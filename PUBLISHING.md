@@ -91,11 +91,22 @@ pnpm package && vsce publish --packagePath dist/verdict-0.0.2.vsix
 
 1. 用 GitHub 账号登录 <https://open-vsx.org> **[你来]**
 2. 右上角头像 → Settings → Access Tokens → 生成 **[你来]**
-3. 发布：
+3. **先建命名空间**（Open VSX 与官方市场不同：它不会自动给你建 publisher，首次发布前
+   必须显式创建一次，名字必须与 `package.json` 的 `publisher` 完全一致）：
+
+```bash
+npx ovsx create-namespace YuChenZhong -p <你的 token>
+```
+
+4. 发布：
 
 ```bash
 npx ovsx publish -p <你的 token> dist/verdict-0.0.1.vsix
 ```
+
+   它会提示命名空间是 "unverified"（没打勾）：不影响发布与安装。那个认证徽章要求命名空间
+   与你的 GitHub 用户名一致；想拿到就把命名空间与 `package.json` 的 `publisher` 一起换成
+   你的 GitHub 用户名。
 
 ## 常见被拒原因
 
