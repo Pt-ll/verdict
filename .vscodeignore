@@ -11,3 +11,10 @@
 # 否则改用 vsce 自己打包时两边产物就会不一样。
 !CHANGELOG.md
 !LICENSE
+
+# 注意两件事（2026-09-13 实测）：
+#   1. 这个文件只能用来「放行」，别指望在这里排除 dist/ 里的东西——写 `dist/*.map`
+#      这类排除，vsce 视而不见，照样把 sourcemap 与上一次的 VSIX 卷进包里。
+#      用 vsce 打包前先清掉 dist/ 里的旧产物（见 PUBLISHING.md）。
+#   2. 我们自己的打包器（src/tools/vsix.ts）不读这个文件，它按白名单收集，
+#      并主动跳过 sourcemap 与 *.vsix（否则会把上一次的包打进这一次的包里）。

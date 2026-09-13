@@ -30,6 +30,11 @@ function makeExtensionRoot(): string {
       engines: { vscode: '^1.95.0' },
       categories: ['Testing', 'Other'],
       keywords: ['judge'],
+      icon: 'media/icon.png',
+      main: './dist/extension.js',
+      repository: { url: 'https://github.com/example/verdict.git' },
+      bugs: { url: 'https://github.com/example/verdict/issues' },
+      galleryBanner: { color: '#1f3e8c', theme: 'dark' },
     }),
   );
   write('dist/extension.js', '// 打包产物\n');
@@ -58,9 +63,43 @@ describe('packageVsix', () => {
     expect(names).toContain('extension/package.json');
     expect(names).toContain('extension/dist/extension.js');
     expect(names).toContain('extension/media/icon.png');
-    expect(names).toContain('extension/README.md');
-    // 市场页面靠它渲染出「Changelog」标签页。
-    expect(names).toContain('extension/CHANGELOG.md');
+    // 包内的名字按市场的约定改成小写（vsce 也这么改）：页面靠它们找详情与更新日志。
+    expect(names).toContain('extension/readme.md');
+    expect(names).toContain('extension/changelog.md');
+  });
+
+  /**
+   * 这一条是 2026-09-13 上传市场时撞出来的：`[Content_Types].xml` 里有一条
+   * `Extension=""`，那是份非法清单——`code --install-extension` 不看，市场后端
+   * 解析时会直接崩成一个 TF400898（内部错误，不给原因）。所以盯住两点：
+   * 每个 part 都有内容类型，且没有空后缀这种写法。
+   */
+  it('[Content_Types].xml 覆盖包内每个 part，且不出现空后缀', async () => {
+    const root = makeExtensionRoot();
+
+    const result = await packageVsix({ root });
+    const zip = fs.readFileSync(result.outFile);
+    const names = listZip(zip).map((entry) => entry.name);
+    const contentTypes =
+      extractZip(zip)
+        .find((entry) => entry.name === '[Content_Types].xml')
+        ?.data.toString('utf8') ?? '';
+
+    expect(contentTypes).not.toContain('Extension=""');
+    expect(contentTypes).toContain('Extension=".vsixmanifest"');
+    expect(contentTypes).toContain('Extension=".png"');
+
+    const declared = [...contentTypes.matchAll(/Extension="(\.\w+)"/g)].map((match) => match[1]);
+    for (const name of names) {
+      if (name === '[Content_Types].xml') {
+        continue;
+      }
+      const extension = path.extname(name).toLowerCase();
+      expect(
+        declared.includes(extension),
+        `包里有 ${name}，但 [Content_Types].xml 没声明 ${extension}`,
+      ).toBe(true);
+    }
   });
 
   it('源码、开发 sourcemap、系统垃圾文件与上一次的包都不进 VSIX', async () => {
@@ -104,8 +143,38 @@ describe('packageVsix', () => {
       .find((entry) => entry.name === 'extension.vsixmanifest')
       ?.data.toString('utf8');
 
-    expect(names).toContain('extension/LICENSE');
-    expect(manifest).toContain('<License>extension/LICENSE</License>');
+    expect(names).toContain('extension/LICENSE.txt');
+    expect(manifest).toContain('<License>extension/LICENSE.txt</License>');
+  });
+
+  /**
+   * 清单一律照 vsce 的产物写：市场后端按这几条资产去找详情页、更新日志、图标与许可证，
+   * 少一条就可能页面空白，或者干脆报一个看不出原因的 TF400898。
+   */
+  it('清单里带上详情 / 更新日志 / 许可证 / 图标四条资产', async () => {
+    const root = makeExtensionRoot();
+    fs.writeFileSync(path.join(root, 'LICENSE'), 'MIT License\n');
+
+    const result = await packageVsix({ root });
+    const manifest = extractZip(fs.readFileSync(result.outFile))
+      .find((entry) => entry.name === 'extension.vsixmanifest')
+      ?.data.toString('utf8');
+
+    expect(manifest).toContain(
+      '<Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/readme.md"',
+    );
+    expect(manifest).toContain(
+      '<Asset Type="Microsoft.VisualStudio.Services.Content.Changelog" Path="extension/changelog.md"',
+    );
+    expect(manifest).toContain(
+      '<Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.txt"',
+    );
+    expect(manifest).toContain(
+      '<Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/media/icon.png"',
+    );
+    // 这两条也在 Metadata 里，市场页面直接读它们。
+    expect(manifest).toContain('<Icon>extension/media/icon.png</Icon>');
+    expect(manifest).toContain('<License>extension/LICENSE.txt</License>');
   });
 });
 
@@ -159,5 +228,42 @@ describe('发布前置条件', () => {
     expect(fs.existsSync(changelog)).toBe(true);
     // 最新一版写在最前面，市场页面读到的就是这一段。
     expect(fs.readFileSync(changelog, 'utf8')).toMatch(/^# .+\n\n## \d+\.\d+\.\d+ — \d{4}-\d{2}-\d{2}/);
+  });
+
+  /**
+   * 直接拿**真实的仓库根目录**打一次包：夹具能过、真仓库过不了的话，
+   * 发到市场上的那一刻才发现问题就太晚了（2026-09-13 的 TF400898 就是这么来的）。
+   * 这里用 packageVsix 打（它不看 dist/ 里有没有东西，只按白名单收集），
+   * 所以不依赖 CI 里「先 build 再 test」这类顺序。
+   */
+  it('真仓库打出来的包，清单与内容类型都是市场认的形状', async () => {
+    const outFile = path.join(workDir, 'release.vsix');
+    const result = await packageVsix({ root, outFile });
+    const zip = fs.readFileSync(result.outFile);
+    const names = listZip(zip).map((entry) => entry.name);
+    const manifest =
+      extractZip(zip)
+        .find((entry) => entry.name === 'extension.vsixmanifest')
+        ?.data.toString('utf8') ?? '';
+    const contentTypes =
+      extractZip(zip)
+        .find((entry) => entry.name === '[Content_Types].xml')
+        ?.data.toString('utf8') ?? '';
+
+    // 市场的详情页 / 更新日志 / 许可证 / 图标全靠这四条资产，缺一条页面就不完整。
+    for (const asset of [
+      'Microsoft.VisualStudio.Code.Manifest',
+      'Microsoft.VisualStudio.Services.Content.Details',
+      'Microsoft.VisualStudio.Services.Content.Changelog',
+      'Microsoft.VisualStudio.Services.Content.License',
+      'Microsoft.VisualStudio.Services.Icons.Default',
+    ]) {
+      expect(manifest, `清单里少了资产 ${asset}`).toContain(`Type="${asset}"`);
+    }
+    expect(manifest).toMatch(/<Icon>extension\/media\/icon\.png<\/Icon>/);
+    expect(contentTypes).not.toContain('Extension=""');
+    // 开发产物不该跟进去：sourcemap 与上一次的包。
+    expect(names.some((name) => name.endsWith('.map'))).toBe(false);
+    expect(names.some((name) => name.endsWith('.vsix'))).toBe(false);
   });
 });

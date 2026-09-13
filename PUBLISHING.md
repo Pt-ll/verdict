@@ -139,6 +139,36 @@ npx ovsx publish -p <你的 token> dist/verdict-0.1.0.vsix
 | 图标不显示 | 不是 128×128 的 PNG，或 `package.json` 里忘了写 `icon` 字段 |
 | 打包后体积异常 | 把 `node_modules/` 之类打进去了；本仓库的打包器按白名单来，不会有这个问题 |
 
+## 我们的 VSIX 为什么会被市场打回（TF400898）
+
+2026-09-13 上传 0.1.0 时撞到的。原因**不在 Markdown、也不在 `package.json` 字段**（那些都齐），
+而在包本身的格式：`pnpm package` 用的是本仓库自带的打包器（SPEC §17.3），
+`code --install-extension` 对它的校验比市场后端松得多。实测出来的两处硬伤：
+
+1. `[Content_Types].xml` 里有一条 `<Default Extension="" ContentType="application/octet-stream" />`。
+   OPC 包的内容类型是一张按后缀建的表，**空后缀是非法写法**，后端建表时直接崩——报出来的
+   就是那个不告诉你原因的 TF400898。当时那条是为了覆盖没有后缀的 `LICENSE`。
+2. `extension.vsixmanifest` 只声明了 `Microsoft.VisualStudio.Code.Manifest` 一条资产，
+   缺 `Content.Details`（README）、`Content.Changelog`、`Content.License` 与 `Icons.Default`，
+   也缺 `<Icon>` 以及仓库相关的 Links / Branding 属性。
+
+修法已经落在 `src/tools/vsix.ts`：
+
+- `[Content_Types].xml` 按**包内实际文件**生成：后缀带点（与 vsce 一致），没有后缀的 part
+  用 `<Override>` 单独声明，不再出现空后缀；
+- 清单补齐 vsce 会写的资产与属性（详情 / 更新日志 / 许可证 / 图标 + Links / Branding / Pricing）；
+- 包内的 README / CHANGELOG / LICENSE 改名成市场约定的 `readme.md` / `changelog.md` / `LICENSE.txt`；
+- `test/vsix.test.ts` 盯着这三件事，其中一条用例**直接拿真实仓库打一次包**再断言。
+
+另一类坑与上面的无关但同样坑人：vsce **不认** `.vscodeignore` 里的排除写法（实测写
+`dist/*.map` 也没用），所以走 vsce 打包前得先清 `dist/`，否则 sourcemap 与上一次的 VSIX
+会被卷进包里：
+
+```bash
+node -e "require('node:fs').rmSync('dist', { recursive: true, force: true })"
+npx @vscode/vsce package        # 输出落在仓库根目录，不会被自己卷进去
+```
+
 ## 发布过程中真实遇到过的两类报错
 
 这两条是首次发布时实际撞上的，记下来省得再摸索一遍。
@@ -175,7 +205,9 @@ Azure DevOps 服务端的内部错误，与你的操作、与扩展本身都无�
 
 - `pnpm package` 产出的 VSIX 已在本机用 `code --install-extension` 装过一次，确认官方安装器
   接受它的清单（装完已卸载）。
-- **当前版本 0.1.0**（侧边栏评测面板），标签 `v0.1.0`；`dist/verdict-0.1.0.vsix` 已就绪，
+- **当前版本 0.1.0**（侧边栏评测面板），标签 `v0.1.0`。两个包都备好了，内容一致（各 9 个文件）：
+  - `dist/verdict-0.1.0.vsix` —— 自带打包器产出，已按市场格式修好（见上一节），首选上传这个；
+  - `dist/verdict-0.1.0-vsce.vsix` —— 官方 vsce 打的备用包，万一前者仍被拒就换它试。
   包里带 `CHANGELOG.md`，市场页因此会有 Changelog 标签页。
 - **Open VSX：已发布 0.0.1**（命名空间 `YuChenZhong`，2026-09-13），0.1.0 待发。未认证
   （要求命名空间与 GitHub 用户名一致），不影响安装。
