@@ -5,7 +5,12 @@ import {
   type CompileResult,
   type Toolchain,
 } from './core/compiler';
-import { Judge, judgeProblem, type CaseResult } from './core/judge/judge';
+import {
+  Judge,
+  judgeProblem,
+  type CaseResult,
+  type ProblemJudgeContext,
+} from './core/judge/judge';
 import { scoreProblem } from './core/judge/score';
 import { languageOf, planContest, type ContestTask } from './core/contest/plan';
 import type { ContestPackage } from './core/contest/contest';
@@ -21,6 +26,7 @@ import type {
   Verdict,
 } from './core/model';
 import { findProblemRoot, loadProblem, type ProblemPackage } from './core/problem/package';
+import { resolveTestlibDir, workspaceTestlibDir } from './core/problem/testlib';
 import {
   findTestsBesideSource,
   resolveTestFiles,
@@ -49,6 +55,8 @@ export interface EngineOptions {
    * 免得从工作区外面的文件一路找到用户主目录去。
    */
   workspaceRoot?: string;
+  /** 对应设置 verdict.testlibPath：testlib.h 所在目录或文件（SPEC §6.6）。 */
+  testlibPath?: string;
 }
 
 export type JudgeOutcome =
@@ -225,7 +233,7 @@ export async function judgeWithProblem(
     return prepared.outcome;
   }
 
-  const result = await judgeProblem(pkg, prepared.compiled.runCmd, sandbox, token, report);
+  const result = await judgeProblem(pkg, await judgeContextOf(pkg, prepared, options), token, report);
   return {
     kind: 'judged',
     compile: prepared.compiled,
@@ -373,8 +381,7 @@ async function judgeTask(
   const problemPackage = await loadProblem(task.problemRoot);
   const result = await judgeProblem(
     problemPackage,
-    prepared.compiled.runCmd,
-    sandbox,
+    await judgeContextOf(problemPackage, prepared, options),
     token,
     report,
   );
@@ -405,7 +412,7 @@ function finishWithoutRun(
 }
 
 type PreparedRun =
-  | { ok: true; compiled: CompileResult; warmedUp: boolean }
+  | { ok: true; compiled: CompileResult; toolchain: Toolchain; warmedUp: boolean }
   | { ok: false; outcome: JudgeOutcome };
 
 /**
@@ -445,7 +452,31 @@ async function prepareRun(
   }
 
   const warmedUp = await warmUp(compiled, limits, token, report);
-  return { ok: true, compiled, warmedUp };
+  return { ok: true, compiled, toolchain, warmedUp };
+}
+
+/** 按 SPEC §6.6 的顺序找 testlib.h：题目包 extra/ → 工作区 .verdict/testlib/ → 用户设置。 */
+async function testlibDirFor(pkg: ProblemPackage, options: EngineOptions): Promise<string | null> {
+  return resolveTestlibDir([
+    pkg.extraDir,
+    options.workspaceRoot === undefined ? undefined : workspaceTestlibDir(options.workspaceRoot),
+    options.testlibPath,
+  ]);
+}
+
+/** 组装一次题目级评测需要的东西：运行命令、编译工具链、沙箱与 testlib.h 的位置。 */
+async function judgeContextOf(
+  pkg: ProblemPackage,
+  prepared: Extract<PreparedRun, { ok: true }>,
+  options: EngineOptions,
+): Promise<ProblemJudgeContext> {
+  return {
+    runCmd: prepared.compiled.runCmd,
+    toolchain: prepared.toolchain,
+    sandbox,
+    cacheDir: options.cacheDir,
+    testlibDir: await testlibDirFor(pkg, options),
+  };
 }
 
 /** 约定式数据（SPEC §5.8.1）没有题目包，按文件位置临时捏一个。 */

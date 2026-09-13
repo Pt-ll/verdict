@@ -34,6 +34,8 @@ export function readEngineOptions(context: vscode.ExtensionContext): EngineOptio
     relEps: config.get<number>('realRelEps'),
   };
 
+  const testlibPath = (config.get<string>('testlibPath') ?? '').trim();
+
   return {
     compilerPath: readCompilerSetting(),
     flags: config.get<string[]>('flags') ?? [],
@@ -42,5 +44,6 @@ export function readEngineOptions(context: vscode.ExtensionContext): EngineOptio
     cacheDir: path.join(context.globalStorageUri.fsPath, 'cache'),
     // 题目包的向上查找以工作区为界，别让工作区外的文件一路找到用户主目录去。
     workspaceRoot: workspaceRoot(),
+    ...(testlibPath.length === 0 ? {} : { testlibPath }),
   };
 }

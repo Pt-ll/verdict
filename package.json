@@ -147,6 +147,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "出现 WA / PC 时自动打开「实际输出 ↔ 标准答案」的原生 diff（SPEC §4.5）。"
+        },
+        "verdict.testlibPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "testlib.h 所在目录或文件。留空则按「题目包 extra/ → 工作区 .verdict/testlib/」的顺序查找（SPEC §6.6）。"
         }
       }
     }

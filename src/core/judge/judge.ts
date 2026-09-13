@@ -1,4 +1,6 @@
 import { createComparator, type Comparator } from '../compare/compare';
+import { prepareComparator } from '../compare/prepare';
+import type { Toolchain } from '../compiler';
 import type {
   CancellationTokenLike,
   CaseResult,
@@ -29,6 +31,11 @@ export interface JudgeCaseInput {
 export interface JudgeOptions {
   limits: Limits;
   comparator: ComparatorConfig;
+  /**
+   * 已经准备好的比较器（SPJ 要先编译 checker、交互题要先编译 interactor）。
+   * 给了就用它，否则按 comparator 现造一个纯函数的。
+   */
+  prepared?: Comparator;
 }
 
 /**
@@ -45,7 +52,7 @@ export class Judge {
     private readonly sandbox: Sandbox,
     private readonly options: JudgeOptions,
   ) {
-    this.comparator = createComparator(options.comparator);
+    this.comparator = options.prepared ?? createComparator(options.comparator);
   }
 
   async judgeCase(
@@ -147,6 +154,40 @@ function firstLine(buffer: Buffer): string {
   return line.length > 200 ? `${line.slice(0, 200)}…` : line;
 }
 
+// checker / interactor 是评测方，限制给得比选手宽松：它们是出题人写的、要在一次运行里
+// 处理整个测试点，卡在和选手一样的限额上会把出题人的正常 checker 误判成失败。
+export function checkerLimits(limits: Limits): Limits {
+  return {
+    ...limits,
+    timeMs: Math.max(1000, limits.timeMs * 10),
+    memoryMb: Math.max(1024, limits.memoryMb * 2),
+  };
+}
+
+/** 出题人配置有问题时（checker 编译不过、找不到文件）：每个测试点都记 UKE 并说明原因。 */
+function allCasesFailed(pkg: ProblemPackage, message: string, startedAt: number): ProblemResult {
+  const scored = scoreProblem(pkg.problem, []);
+  return {
+    problem: pkg.problem.id,
+    score: scored.score,
+    maxScore: scored.maxScore,
+    cases: pkg.problem.tests.map((test) => ({
+      test: test.id,
+      verdict: 'UKE' as const,
+      score: 0,
+      timeMs: 0,
+      memoryKb: 0,
+      exitCode: null,
+      signal: null,
+      message,
+      output: Buffer.alloc(0),
+      answer: Buffer.alloc(0),
+    })),
+    subtasks: scored.subtasks,
+    elapsedMs: Date.now() - startedAt,
+  };
+}
+
 /**
  * 评测整个题目包：逐测试点运行，最后按子任务计分（SPEC §5.5）。
  *
@@ -155,17 +196,45 @@ function firstLine(buffer: Buffer): string {
  *
  * 预热不在这里做：那是「产物是不是刚编译出来的」这类知识，属于上层，见 engineFacade 的 prepareRun。
  */
+export interface ProblemJudgeContext {
+  runCmd: RunCommand;
+  /** 编译 checker / interactor 也要用它。 */
+  toolchain: Toolchain;
+  sandbox: Sandbox;
+  cacheDir: string;
+  /** testlib.h 所在目录；null / 不给表示没找到（SPEC §6.6）。 */
+  testlibDir?: string | null;
+}
+
 export async function judgeProblem(
   pkg: ProblemPackage,
-  runCmd: RunCommand,
-  sandbox: Sandbox,
+  ctx: ProblemJudgeContext,
   token?: CancellationTokenLike,
   onProgress?: (stage: string) => void,
 ): Promise<ProblemResult> {
   const startedAt = Date.now();
+  const sandbox = ctx.sandbox;
+
+  // 比较器只准备一次：SPJ 要编译 checker，逐测试点编译几十遍纯属浪费。
+  const prepared = await prepareComparator(pkg.problem.comparator, {
+    packageRoot: pkg.rootDir,
+    toolchain: ctx.toolchain,
+    sandbox,
+    limits: checkerLimits(pkg.problem.limits),
+    cacheDir: ctx.cacheDir,
+    testlibDir: ctx.testlibDir ?? null,
+  });
+  if ('error' in prepared) {
+    return allCasesFailed(pkg, prepared.error, startedAt);
+  }
+  if (prepared.note !== undefined) {
+    onProgress?.(prepared.note);
+  }
+
   const judge = new Judge(sandbox, {
     limits: pkg.problem.limits,
     comparator: pkg.problem.comparator,
+    prepared: prepared.comparator,
   });
 
   const cases: CaseResult[] = [];
@@ -198,7 +267,7 @@ export async function judgeProblem(
 
     cases.push(
       await judge.judgeCase(
-        { testId: test.id, input, answer, runCmd, points: test.points },
+        { testId: test.id, input, answer, runCmd: ctx.runCmd, points: test.points },
         token,
       ),
     );
