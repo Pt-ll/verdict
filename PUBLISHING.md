@@ -116,8 +116,12 @@ npx ovsx publish -p <你的 token> dist/verdict-0.0.1.vsix
 生成 PAT 时出现。意思是这个微软账号不属于任何 Azure DevOps 组织，而发布权限挂在
 Microsoft Services 租户下。两个常见原因：
 
-1. 这个账号从没建过 Azure DevOps 组织 → 去 <https://dev.azure.com> 用**同一个账号**
-   创建一个（免费），再从这个组织里生成 PAT。
+1. 这个账号从没建过 Azure DevOps 组织 → 用**同一个账号**访问 <https://aex.dev.azure.com>
+   （这是「我的组织列表」页）：列表为空就点 **Create new organization**；已经有组织就直接进去。
+   另一个入口是 <https://dev.azure.com>，它会转到组织选择页，左上角组织下拉框的最底部
+   也有 **New organization**。创建时 Name 要全局唯一（例如 `yuchenzhong-verdict`），
+   Region 选离你近的即可。这一步会顺带给账号建一个后台租户——正是上面那条报错缺的东西。
+   建好之后：进组织 → 右上角用户设置 → Personal access tokens → New Token。
 2. 登录 Azure DevOps 和登录市场的不是同一个账号 → 开隐私窗口重新登录，保证两边一致。
 
 另一个更省事的选择是**根本不用 PAT**：在市场的 manage 页面用 "New extension → Visual Studio Code"
