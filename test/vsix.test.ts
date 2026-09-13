@@ -26,7 +26,7 @@ function makeExtensionRoot(): string {
       displayName: 'Verdict · VSCode 评测系统',
       description: '本地评测系统',
       version: '9.9.9',
-      publisher: 'verdict-dev',
+      publisher: 'example-publisher',
       engines: { vscode: '^1.95.0' },
       categories: ['Testing', 'Other'],
       keywords: ['judge'],
@@ -82,7 +82,7 @@ describe('packageVsix', () => {
 
     expect(manifest).toContain('Id="verdict"');
     expect(manifest).toContain('Version="9.9.9"');
-    expect(manifest).toContain('Publisher="verdict-dev"');
+    expect(manifest).toContain('Publisher="example-publisher"');
     expect(manifest).toContain('Value="^1.95.0"');
     // 安装器靠这一行找到扩展清单；写错了会装不上。
     expect(manifest).toContain('Path="extension/package.json"');

@@ -25,10 +25,17 @@
 ### 1. 创建 publisher **[你来]**
 
 1. 用 Microsoft 账号登录 <https://marketplace.visualstudio.com/manage>
-2. 按页面引导创建 publisher。**名字必须与 `package.json` 里的 `publisher` 一致**——
-   本仓库现在写的是 `verdict-dev`，所以要么创建同名 publisher，要么把两边一起改。
-   （改 `publisher` 会改变扩展 ID：`verdict-dev.verdict`。装过 VSIX 的人会看到两个扩展，
-   所以最好在第一次发布前定下来。）
+2. 按页面引导创建 publisher：**ID 填 `yuchenzhong`**。
+   市场只允许小写字母、数字和连字符，空格放不进 ID；带空格的显示名（`Yuchen Zhong`）是
+   填在 publisher 资料页上的，不影响这里的 ID。
+
+   **ID 必须与 `package.json` 里的 `publisher` 一致**——本仓库已经写成 `yuchenzhong`。
+   扩展 ID 因此是 `yuchenzhong.verdict`；发布前定下来最好，因为以后再改 ID，装过旧版本的人
+   会看到两个扩展（旧的不会自动消失）。
+
+   想换成别的（比如与 GitHub 用户名一致的 `pt-ll`），要同时改三处：`package.json` 的
+   `publisher`、本文档里的示例命令，以及 `test/integration/index.js` 里的 `EXTENSION_ID`
+   （那条测试就是靠它找到扩展的，改漏了会直接红）。
 
 ### 2. 生成访问令牌（PAT） **[你来]**
 
@@ -40,7 +47,7 @@
 
 ```bash
 npm install -g @vscode/vsce
-vsce login verdict-dev        # 粘上一步的 PAT
+vsce login yuchenzhong        # 粘上一步的 PAT
 ```
 
 ### 4. 打包并发布
@@ -58,7 +65,7 @@ vsce publish
 ```
 
 发布成功后几分钟内会出现在
-<https://marketplace.visualstudio.com/items?itemName=verdict-dev.verdict>。
+<https://marketplace.visualstudio.com/items?itemName=yuchenzhong.verdict>。
 
 ### 5. 以后每次更新
 

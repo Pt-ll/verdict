@@ -7,7 +7,7 @@ const path = require('node:path');
 const vscode = require('vscode');
 
 /** 扩展 ID = package.json 的 `${publisher}.${name}`。 */
-const EXTENSION_ID = 'verdict-dev.verdict';
+const EXTENSION_ID = 'yuchenzhong.verdict';
 
 const COMMANDS = [
   'verdict.checkEnv',
