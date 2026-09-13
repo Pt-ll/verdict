@@ -1,6 +1,6 @@
 #include <cstdio>
 
-// 故意只写对一半：小数据能过，大数据的和超过 int 范围就错了。
+// Bob 的 A 题：只写对一半——小数据能过，大数据的和超过 int 范围就错了。
 // 用 static_cast 显式截断，避免依赖有符号溢出的未定义行为。
 int main() {
   long long a = 0;

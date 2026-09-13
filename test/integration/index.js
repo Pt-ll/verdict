@@ -1,6 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const vscode = require('vscode');
 
 /** 扩展 ID = package.json 的 `${publisher}.${name}`。 */
@@ -16,6 +19,13 @@ const COMMANDS = [
   'verdict.setLimits',
   'verdict.showDiff',
   'verdict.debugCase',
+  // M3 的比赛类命令（同样只验注册：它们大多要弹对话框或起 WebView）。
+  'verdict.newContest',
+  'verdict.newProblem',
+  'verdict.judgeAll',
+  'verdict.rejudge',
+  'verdict.showStandings',
+  'verdict.exportHtml',
 ];
 
 /**
@@ -68,6 +78,7 @@ async function run() {
   await checkDiff();
   await checkProblemPackage(api, folder.uri);
   await checkDebug(api, folder.uri);
+  await checkContest(api);
 
   console.log('[verdict] 集成测试全部通过');
 }
@@ -112,12 +123,11 @@ async function checkDiff() {
 async function checkProblemPackage(api, root) {
   await api.refreshTesting();
   const problems = api.testingItems();
-  const problem = problems.find((item) => item.id.includes('problemA'));
+  const problem = problems.find((item) => item.label === 'A. 求和');
   assert.ok(
     problem,
-    `Testing 树里应当出现 testdata/problemA，实际是：${problems.map((item) => item.label).join(' / ') || '（空）'}`,
+    `Testing 树里应当出现题目 A，实际是：${problems.map((item) => item.label).join(' / ') || '（空）'}`,
   );
-  assert.equal(problem.label, 'A. 求和');
 
   const subtasks = childrenOf(problem);
   assert.deepEqual(
@@ -129,7 +139,7 @@ async function checkProblemPackage(api, root) {
   assert.deepEqual(childrenOf(subtasks[1]).map((item) => item.label), ['#2']);
   console.log('[verdict] Testing 树：A. 求和 > 子任务 1(#1) / 子任务 2(#2)');
 
-  await openSource(root, 'problemA/solve.cpp');
+  await openSource(root, 'players/alice/A.cpp');
   const full = await api.runTestingItems(subtasks);
   assert.ok(full !== null, '跑测试应当拿到评测结果');
   assert.equal(full.kind, 'judged', `期望 judged，实际 ${full.kind}${detailOf(full)}`);
@@ -137,7 +147,7 @@ async function checkProblemPackage(api, root) {
   assert.deepEqual(full.subtasks.map((item) => item.status), ['full', 'full']);
 
   // 只写对一半的程序：小数据过、大数据溢出，应当拿到第 1 个子任务的 30 分。
-  await openSource(root, 'problemA/solve-wrong.cpp');
+  await openSource(root, 'players/bob/A.cpp');
   const partial = await api.runTestingItems(subtasks);
   assert.ok(partial !== null, '跑测试应当拿到评测结果');
   assert.equal(partial.kind, 'judged', `期望 judged，实际 ${partial.kind}${detailOf(partial)}`);
@@ -170,8 +180,8 @@ async function openSource(root, relative) {
  * 给出可操作提示的地方。本机想验证真的会话：VERDICT_ITEST_KEEP_EXTENSIONS=1。
  */
 async function checkDebug(api, root) {
-  await openSource(root, 'problemA/solve.cpp');
-  const problemRoot = vscode.Uri.joinPath(root, 'problemA').fsPath;
+  await openSource(root, 'players/alice/A.cpp');
+  const problemRoot = vscode.Uri.joinPath(root, '.verdict', 'problems', 'A').fsPath;
   const result = await api.debugFirstCase(problemRoot, '1');
 
   if (process.env.VERDICT_ITEST_KEEP_EXTENSIONS !== '1') {
@@ -199,6 +209,84 @@ async function checkDebug(api, root) {
   // 收拾干净：留着会话会让扩展宿主退出变慢。
   await vscode.debug.stopDebugging();
   console.log(`[verdict] 调试：会话已启动（stdio 注入 ${result.injected ? '已尝试' : '未尝试'}），随后停止`);
+}
+
+/**
+ * M3 验收（SPEC §12）：多选手多题评测后榜单正确、重测上限生效、导出的 HTML 自包含且可点开详情。
+ *
+ * 走的是命令按钮背后同一套代码（ContestSession），只是绕开了对话框——
+ * 「评测全部」点一下是没法断言分数的。
+ */
+async function checkContest(api) {
+  const summary = await api.judgeContestAll();
+  assert.ok(summary !== null, '工作区里应当有 .verdict/contest.json（见 testdata）');
+  assert.deepEqual(
+    summary.missing,
+    [],
+    `所有选手都应当有源码，缺的是：${JSON.stringify(summary.missing)}`,
+  );
+
+  // Alice：A 题两个子任务都对（100）+ B 题满分（100）= 200
+  // Bob：A 题大数据溢出（30）+ B 题满分（100）= 130
+  const totals = new Map(summary.standings.totals.map((item) => [item.contestant, item.score]));
+  assert.equal(totals.get('alice'), 200, `Alice 应当 200 分，实际 ${totals.get('alice')}`);
+  assert.equal(totals.get('bob'), 130, `Bob 应当 130 分，实际 ${totals.get('bob')}`);
+  assert.deepEqual(
+    summary.standings.ranks.map((item) => [item.contestant, item.rank]),
+    [
+      ['alice', 1],
+      ['bob', 2],
+    ],
+    '名次应当按总分降序',
+  );
+  console.log('[verdict] 整场评测：alice 200 分、bob 130 分，名次正确');
+
+  // 导出的 HTML 必须自包含：断网双击就能看，不依赖字体 / CDN / 图片。
+  const html = api.standingsHtml();
+  assert.ok(html !== null, '应当能生成榜单 HTML');
+  assert.ok(html.includes('演示赛'), '榜单应当包含比赛标题');
+  for (const forbidden of ['http://', 'https://', '<link', '<script src', '@import']) {
+    assert.ok(!html.includes(forbidden), `榜单 HTML 不该引用外部资源：${forbidden}`);
+  }
+  assert.ok(html.includes('data-cell'), '单元格应当可点开详情');
+
+  const target = path.join(os.tmpdir(), `verdict-standings-${String(Date.now())}.html`);
+  const written = await api.writeStandingsHtml(target);
+  assert.equal(written, target, '导出的路径应当就是指定的那个');
+  assert.ok(fs.readFileSync(target, 'utf8').includes('Alice'), '导出的文件里应当有选手');
+  fs.rmSync(target, { force: true });
+  console.log('[verdict] 榜单 HTML 已导出到磁盘，自包含且可点开详情');
+
+  // 重测上限：testdata 里 maxRejudge = 1，所以第二次必须被拒绝。
+  const first = await api.rejudgeOne('bob', 'A');
+  assert.equal(first.ok, true, `第一次重测应当允许：${first.message}`);
+  assert.equal(first.submission.rejudgeCount, 1, '重测次数应当加一');
+  const second = await api.rejudgeOne('bob', 'A');
+  assert.equal(second.ok, false, '到达上限后不该再允许重测');
+  assert.ok(second.message.includes('上限'), `拒绝理由要写清楚，实际：${second.message}`);
+  console.log('[verdict] 重测上限生效：第一次允许，第二次被拒绝');
+
+  // 榜单 WebView：至少确认它能被打开（生成 HTML 的过程要跑通，模板出错会当场抛）。
+  // WebView 内部的 DOM 没法从这里读到，所以只做冒烟检查。
+  await vscode.commands.executeCommand('verdict.showStandings');
+  const tabs = await waitForTabs((tab) => tab.label.includes('榜单'));
+  assert.ok(
+    tabs.some((tab) => tab.label.includes('榜单')),
+    `应当打开榜单面板，实际标签：${tabs.map((tab) => tab.label).join(' / ')}`,
+  );
+  console.log('[verdict] 榜单 WebView 已打开');
+}
+
+/** 面板/标签的出现是异步的，等一小会儿再断言，避免把「还没渲染完」当成「没打开」。 */
+async function waitForTabs(predicate, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const tabs = vscode.window.tabGroups.all.flatMap((group) => group.tabs);
+    if (tabs.some(predicate) || Date.now() > deadline) {
+      return tabs;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 async function checkJudgement(api, root, item) {

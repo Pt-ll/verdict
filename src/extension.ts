@@ -2,6 +2,11 @@ import * as vscode from 'vscode';
 import type { JudgeOutcome } from './engineFacade';
 import { CaseDocumentStore } from './vscode/caseDocs';
 import { registerCommands } from './vscode/commands';
+import {
+  registerContestCommands,
+  type ContestSummary,
+  type RejudgeResult,
+} from './vscode/contest';
 import { startDebug, type DebugResult } from './vscode/debug';
 import { JudgeCodeLensProvider } from './vscode/codelens';
 import { DiagnosticsPublisher } from './vscode/diagnostics';
@@ -26,6 +31,14 @@ export interface VerdictApi {
   runTestingItems(items: vscode.TestItem[]): Promise<JudgeOutcome | null>;
   /** 用当前文件的某个测试点起调试会话；集成测试用它验证「没装调试扩展」这条路径。 */
   debugFirstCase(problemRoot?: string, testId?: string): Promise<DebugResult>;
+  /** M3：评测整场比赛（集成测试用它验收 M3 的榜单与分数）。 */
+  judgeContestAll(): Promise<ContestSummary | null>;
+  /** M3：重测一条提交；受 maxRejudge 约束，拒绝时 ok=false 并说明原因。 */
+  rejudgeOne(contestant: string, problem: string): Promise<RejudgeResult>;
+  /** M3：生成榜单 HTML 文本（集成测试断言「自包含」）。 */
+  standingsHtml(): string | null;
+  /** M3：把榜单 HTML 写到指定路径，返回写出的路径。 */
+  writeStandingsHtml(target: string): Promise<string | null>;
 }
 
 /**
@@ -53,6 +66,7 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
     caseDocs,
     refreshTests: () => hooks.refreshTests(),
   });
+  const contest = registerContestCommands({ context, output, status });
   const testing = registerTesting({
     output,
     judgeInPackage: (document, problemRoot, token) =>
@@ -68,6 +82,7 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
     diagnostics,
     ...commands.disposables,
     ...problemCommands,
+    ...contest.disposables,
     ...testing.disposables,
     vscode.languages.registerCodeLensProvider(
       [
@@ -96,6 +111,10 @@ export function activate(context: vscode.ExtensionContext): VerdictApi {
       }
       return startDebug({ context, output }, document, { problemRoot, testId });
     },
+    judgeContestAll: () => contest.session.judgeAll(),
+    rejudgeOne: (contestant, problem) => contest.session.rejudge(contestant, problem),
+    standingsHtml: () => contest.session.html(),
+    writeStandingsHtml: (target) => contest.session.exportHtml(target),
   };
 }
 

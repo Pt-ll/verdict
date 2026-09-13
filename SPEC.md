@@ -518,6 +518,10 @@ export interface Submission {
   time: string;
 }
 
+// 实现补充：Submission 还有可选的 verdict / message。正常评测时 verdict 等于
+// result.cases 里最严重的那一个（同一处算出来，不会打架）；编译失败时 cases 是空的，
+// 只有它能说明发生了什么——把 CE 标成 UKE 会让人以为是评测环境的问题。
+
 export interface StandingsCell { contestant: string; problem: string; score: number; verdict: Verdict | null }
 export interface Standings {
   cells: StandingsCell[];
@@ -571,6 +575,10 @@ export function standingsToHtml(contest: Contest, standings: Standings, opts: Re
 export function reportToMarkdown(r: ProblemResult): string;
 export function reportToJson(r: ProblemResult): string;
 ```
+
+实现补充：`standingsToHtml` 还有可选的第四个参数（`submissions`）。给了才能把逐测试点
+结果内嵌进去、让单元格可点开详情；不给就退化成一张纯静态表格。`embedData: false` 同理。
+「自包含」有测试兜着：输出里不允许出现 `http://`、`<link`、`<script src`、`@import`、`url(`。
 
 - HTML **自包含**：内联 CSS、内联数据（JSON）、无外部字体/脚本/CDN，可离线双击打开。
 - 分数单元格按主题着色，并带分数变化色阶。

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": "demo",
+  "title": "演示赛",
+  "maxRejudge": 1,
+  "problems": ["A", "B"],
+  "contestants": [
+    { "id": "alice", "name": "Alice", "folder": "players/alice" },
+    { "id": "bob", "name": "Bob", "folder": "players/bob" }
+  ]
+}

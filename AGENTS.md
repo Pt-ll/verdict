@@ -54,9 +54,12 @@ Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2
 - `test/integration/index.js`：断言命令注册、六种判定（AC/WA/TLE/RE/OLE/CE）与编译失败诊断。
 - `testdata/`（集成测试的工作区）：
   - `itest/`：走 M1 约定式查找的样例程序（AC/WA/TLE/RE/OLE/CE + diff 行号）。
-  - `problemA/`：一个完整题目包，用来验收 Testing 面板与子任务计分。
+  - `.verdict/`：一场完整的比赛（`contest.json` + `problems/A`、`problems/B`），
+    验收 Testing 面板、子任务计分，以及 M3 的榜单 / 重测上限 / 导出 HTML。
+  - `players/`：选手源码。alice 全对；bob 的 A 题故意在 int 溢出上出错，拿 30/100，
+    这样「部分分」这条路每次 CI 都会被真的走到。
   - `.vscode/settings.json`：时限 1000ms、内存 256MB、输出 64KB。
-  改样例时要同步改 `test/integration/index.js` 里的期望表。
+  改样例时要同步改 `test/integration/index.js` 里的期望表（分数、名次、用例表都在那里）。
 - 本机想连真实调试会话一起验（会真的拉起 lldb 与 cpptools）：
   `VERDICT_ITEST_KEEP_EXTENSIONS=1 pnpm test:integration`。它借用机器上的扩展目录
   （不借用户数据目录，否则会和你正开着的 VSCode 抢实例）。CI 上这个开关是关的，
@@ -66,7 +69,8 @@ Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2
 
 - M1 骨架 + 编译运行 + 单点判定 ✅（2026-09-12 三平台 CI 全绿）
 - M2 题目包 + 测试点 + 子任务 + Testing/diff ✅（三平台 CI 全绿）
-- M3 比赛 + 选手 + 重测 + 榜单 + HTML ← 当前
+- M3 比赛 + 选手 + 重测 + 榜单 + HTML ✅（本机验收全过；三平台 CI 待确认）
+- M4 交互题 + testlib SPJ + 导入导出 + 打包 ← 当前
 - M4 交互题 + testlib SPJ + 导入导出 + 打包
 
 ## 代码风格

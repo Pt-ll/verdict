@@ -58,6 +58,30 @@
       {
         "command": "verdict.debugCase",
         "title": "Verdict: 调试首测点"
+      },
+      {
+        "command": "verdict.newContest",
+        "title": "Verdict: 新建比赛"
+      },
+      {
+        "command": "verdict.newProblem",
+        "title": "Verdict: 新建题目"
+      },
+      {
+        "command": "verdict.judgeAll",
+        "title": "Verdict: 评测全部"
+      },
+      {
+        "command": "verdict.rejudge",
+        "title": "Verdict: 重测"
+      },
+      {
+        "command": "verdict.showStandings",
+        "title": "Verdict: 显示榜单"
+      },
+      {
+        "command": "verdict.exportHtml",
+        "title": "Verdict: 导出 HTML 成绩"
       }
     ],
     "configuration": {

@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "submissions": [
+    {
+      "id": "alice-A-1789275450665",
+      "contestant": "alice",
+      "problem": "A",
+      "source": "/Users/pt.ll/Desktop/Verdict/testdata/players/alice/A.cpp",
+      "language": "cpp",
+      "verdict": "AC",
+      "rejudgeCount": 0,
+      "time": "2026-09-13T04:57:30.665Z",
+      "result": {
+        "problem": "A",
+        "score": 100,
+        "maxScore": 100,
+        "elapsedMs": 13,
+        "subtasks": [
+          {
+            "id": "1",
+            "score": 30,
+            "maxScore": 30,
+            "status": "full"
+          },
+          {
+            "id": "2",
+            "score": 70,
+            "maxScore": 70,
+            "status": "full"
+          }
+        ],
+        "cases": [
+          {
+            "test": "1",
+            "verdict": "AC",
+            "score": 30,
+            "timeMs": 7,
+            "memoryKb": 0,
+            "exitCode": 0,
+            "signal": null,
+            "message": "输出一致"
+          },
+          {
+            "test": "2",
+            "verdict": "AC",
+            "score": 70,
+            "timeMs": 6,
+            "memoryKb": 0,
+            "exitCode": 0,
+            "signal": null,
+            "message": "输出一致"
+          }
+        ]
+      }
+    },
+    {
+      "id": "alice-B-1789275450679",
+      "contestant": "alice",
+      "problem": "B",
+      "source": "/Users/pt.ll/Desktop/Verdict/testdata/players/alice/B.cpp",
+      "language": "cpp",
+      "verdict": "AC",
+      "rejudgeCount": 0,
+      "time": "2026-09-13T04:57:30.679Z",
+      "result": {
+        "problem": "B",
+        "score": 100,
+        "maxScore": 100,
+        "elapsedMs": 6,
+        "subtasks": [],
+        "cases": [
+          {
+            "test": "1",
+            "verdict": "AC",
+            "score": 100,
+            "timeMs": 5,
+            "memoryKb": 0,
+            "exitCode": 0,
+            "signal": null,
+            "message": "输出一致"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bob-A-1789275450686",
+      "contestant": "bob",
+      "problem": "A",
+      "source": "/Users/pt.ll/Desktop/Verdict/testdata/players/bob/A.cpp",
+      "language": "cpp",
+      "verdict": "WA",
+      "rejudgeCount": 1,
+      "time": "2026-09-13T04:57:30.686Z",
+      "result": {
+        "problem": "A",
+        "score": 30,
+        "maxScore": 100,
+        "elapsedMs": 10,
+        "subtasks": [
+          {
+            "id": "1",
+            "score": 30,
+            "maxScore": 30,
+            "status": "full"
+          },
+          {
+            "id": "2",
+            "score": 0,
+            "maxScore": 70,
+            "status": "none"
+          }
+        ],
+        "cases": [
+          {
+            "test": "1",
+            "verdict": "AC",
+            "score": 30,
+            "timeMs": 6,
+            "memoryKb": 0,
+            "exitCode": 0,
+            "signal": null,
+            "message": "输出一致"
+          },
+          {
+            "test": "2",
+            "verdict": "WA",
+            "score": 0,
+            "timeMs": 4,
+            "memoryKb": 0,
+            "exitCode": 0,
+            "signal": null,
+            "message": "第 1 行不同：答案 \"4000000000\"，实际 \"-294967296\"",
+            "firstDiffLine": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "bob-B-1789275450696",
+      "contestant": "bob",
+      "problem": "B",
+      "source": "/Users/pt.ll/Desktop/Verdict/testdata/players/bob/B.cpp",
+      "language": "cpp",
+      "verdict": "AC",
+      "rejudgeCount": 0,
+      "time": "2026-09-13T04:57:30.696Z",
+      "result": {
+        "problem": "B",
+        "score": 100,
+        "maxScore": 100,
+        "elapsedMs": 5,
+        "subtasks": [],
+        "cases": [
+          {
+            "test": "1",
+            "verdict": "AC",
+            "score": 100,
+            "timeMs": 5,
+            "memoryKb": 0,
+            "exitCode": 0,
+            "signal": null,
+            "message": "输出一致"
+          }
+        ]
+      }
+    }
+  ]
+}
