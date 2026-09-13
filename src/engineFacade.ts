@@ -7,12 +7,18 @@ import {
 } from './core/compiler';
 import { Judge, judgeProblem, type CaseResult } from './core/judge/judge';
 import { scoreProblem } from './core/judge/score';
+import { languageOf, planContest, type ContestTask } from './core/contest/plan';
+import type { ContestPackage } from './core/contest/contest';
+import { summarizeVerdict } from './core/model';
 import type {
   CancellationTokenLike,
   ComparatorConfig,
   Limits,
   Problem,
+  ProblemResult,
   SubtaskResult,
+  Submission,
+  Verdict,
 } from './core/model';
 import { findProblemRoot, loadProblem, type ProblemPackage } from './core/problem/package';
 import {
@@ -233,6 +239,169 @@ export async function judgeWithProblem(
     cancelled: token?.isCancellationRequested === true,
     warmedUp: prepared.warmedUp,
   };
+}
+
+export interface ContestJudgeHooks {
+  onProgress?: (stage: string) => void;
+  /**
+   * 每判完一条提交回调一次。
+   *
+   * 给 UI 增量保存用：一场比赛可能有几十份提交，中途取消或崩溃时，
+   * 已经跑完的结果不该跟着丢。
+   */
+  onSubmission?: (submission: Submission) => void | Promise<void>;
+}
+
+export interface ContestJudgeResult {
+  submissions: Submission[];
+  /** 找不到源码的格子：不是错误，就是「还没交」。 */
+  missing: { contestant: string; problem: string }[];
+  cancelled: boolean;
+}
+
+/** 评测整场比赛：选手 × 题目，逐个编译运行（SPEC §5.7 的 judgeAll）。 */
+export async function judgeContest(
+  pkg: ContestPackage,
+  options: EngineOptions,
+  token?: CancellationTokenLike,
+  hooks: ContestJudgeHooks = {},
+): Promise<ContestJudgeResult> {
+  const report = hooks.onProgress ?? ((): void => undefined);
+  const plan = await planContest(pkg);
+  const submissions: Submission[] = [];
+  let cancelled = false;
+
+  if (plan.missing.length > 0) {
+    report(`跳过 ${String(plan.missing.length)} 个没有源码的格子`);
+  }
+
+  for (const task of plan.tasks) {
+    if (token?.isCancellationRequested === true) {
+      cancelled = true;
+      break;
+    }
+    report(`评测 ${task.contestant.id} × ${task.problem.id}`);
+    const submission = await judgeTask(task, options, token, report);
+    submissions.push(submission);
+    await hooks.onSubmission?.(submission);
+  }
+
+  return { submissions, missing: plan.missing, cancelled };
+}
+
+/**
+ * 重测一条提交：重跑同一次提交，rejudgeCount 加一（SPEC §5.7）。
+ *
+ * 保持 id 与提交时间不变——重测不是「又交了一份」，而是同一次提交重新判一遍；
+ * 时间跟着变的话，榜单里「同分取更早」的规则会跟着抖动。
+ */
+export async function rejudgeSubmission(
+  submission: Submission,
+  pkg: ContestPackage,
+  options: EngineOptions,
+  token?: CancellationTokenLike,
+  onProgress?: (stage: string) => void,
+): Promise<Submission> {
+  const problem = pkg.contest.problems.find((item) => item.id === submission.problem);
+  const problemRoot = pkg.problemDirs.get(submission.problem);
+  const contestant = pkg.contest.contestants.find((item) => item.id === submission.contestant);
+
+  if (problem === undefined || problemRoot === undefined || contestant === undefined) {
+    return {
+      ...submission,
+      verdict: 'UKE',
+      message: '比赛配置里已经找不到这条提交对应的选手或题目',
+    };
+  }
+
+  const rerun = await judgeTask(
+    { contestant, problem, problemRoot, source: submission.source },
+    options,
+    token,
+    onProgress ?? ((): void => undefined),
+  );
+  return {
+    ...rerun,
+    id: submission.id,
+    time: submission.time,
+    rejudgeCount: submission.rejudgeCount + 1,
+  };
+}
+
+async function judgeTask(
+  task: ContestTask,
+  options: EngineOptions,
+  token: CancellationTokenLike | undefined,
+  report: (stage: string) => void,
+): Promise<Submission> {
+  const base: Submission = {
+    id: `${task.contestant.id}-${task.problem.id}-${String(Date.now())}`,
+    contestant: task.contestant.id,
+    problem: task.problem.id,
+    source: task.source,
+    language: languageOf(task.source),
+    rejudgeCount: 0,
+    time: new Date().toISOString(),
+  };
+
+  if (task.problem.tests.length === 0) {
+    return finishWithoutRun(base, task.problem, 'UKE', `题目「${task.problem.id}」还没有测试点`);
+  }
+
+  const prepared = await prepareRun(task.source, options, task.problem.limits, token, report);
+  if (!prepared.ok) {
+    const outcome = prepared.outcome;
+    if (outcome.kind === 'compile-failed') {
+      const first = outcome.compile.diagnostics.find((item) => item.severity === 'error');
+      return finishWithoutRun(
+        base,
+        task.problem,
+        'CE',
+        first === undefined
+          ? '编译失败'
+          : `编译失败：${first.file}:${first.line}:${first.column} ${first.message}`,
+      );
+    }
+    return finishWithoutRun(
+      base,
+      task.problem,
+      'UKE',
+      outcome.kind === 'no-compiler' ? outcome.message : '无法开始评测',
+    );
+  }
+
+  const problemPackage = await loadProblem(task.problemRoot);
+  const result = await judgeProblem(
+    problemPackage,
+    prepared.compiled.runCmd,
+    sandbox,
+    token,
+    report,
+  );
+  return { ...base, result, verdict: summarizeVerdict(result.cases) ?? 'AC' };
+}
+
+/**
+ * 一个测试点都没跑成时的提交记录（编译失败、没有测试点……）。
+ *
+ * 仍然算出满分，榜单才显示得出「0 / 100」而不是空白；分母算错了会让人看不懂自己差多少。
+ */
+function finishWithoutRun(
+  base: Submission,
+  problem: Problem,
+  verdict: Verdict,
+  message: string,
+): Submission {
+  const scored = scoreProblem(problem, []);
+  const result: ProblemResult = {
+    problem: problem.id,
+    score: scored.score,
+    maxScore: scored.maxScore,
+    cases: [],
+    subtasks: scored.subtasks,
+    elapsedMs: 0,
+  };
+  return { ...base, result, verdict, message };
 }
 
 type PreparedRun =

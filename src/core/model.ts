@@ -176,6 +176,15 @@ export interface Submission {
   source: string;
   language: string;
   result?: ProblemResult;
+  /**
+   * 该次提交的整体判定。
+   *
+   * 正常评测时它等于 result.cases 里最严重的那一个（同一处算出来，不会打架）；
+   * 编译失败这种「一个测试点都没跑」的情况 result.cases 是空的，只有它才有话说。
+   */
+  verdict?: Verdict;
+  /** 编译失败等整体性问题的说明。 */
+  message?: string;
   rejudgeCount: number;
   /** ISO 时间戳。 */
   time: string;

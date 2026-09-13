@@ -8,7 +8,8 @@ import type {
 } from '../model';
 import { summarizeVerdict } from '../model';
 
-function cellKey(contestant: string, problem: string): string {
+/** 「选手 × 题目」的唯一键：榜单取最优、提交记录合并都用它。 */
+export function submissionKey(contestant: string, problem: string): string {
   return `${contestant}\u0000${problem}`;
 }
 
@@ -28,7 +29,7 @@ export function bestSubmissions(
 ): Map<string, Submission> {
   const best = new Map<string, Submission>();
   for (const submission of submissions) {
-    const key = cellKey(submission.contestant, submission.problem);
+    const key = submissionKey(submission.contestant, submission.problem);
     const current = best.get(key);
     if (current === undefined || beats(submission, current)) {
       best.set(key, submission);
@@ -52,7 +53,7 @@ export function computeStandings(contest: Contest, submissions: Submission[]): S
   const cells: StandingsCell[] = [];
   for (const contestant of contest.contestants) {
     for (const problem of contest.problems) {
-      const submission = best.get(cellKey(contestant.id, problem.id));
+      const submission = best.get(submissionKey(contestant.id, problem.id));
       cells.push({
         contestant: contestant.id,
         problem: problem.id,
