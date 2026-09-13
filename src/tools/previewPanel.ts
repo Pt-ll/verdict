@@ -26,10 +26,12 @@ const state: PanelState = {
     title: '内部训练赛 #3',
     maxRejudge: 3,
     contestants: [
-      { id: 'alice', name: 'Alice' },
-      { id: 'bob', name: 'Bob' },
+      { id: 'alice', name: 'Alice', auto: false },
+      // 预览里故意留一个「自动发现」的，好顺带看看那句话长什么样。
+      { id: 'bob', name: 'Bob', auto: true },
     ],
     problemIds: ['A', 'B'],
+    error: null,
   },
   problems: [
     {

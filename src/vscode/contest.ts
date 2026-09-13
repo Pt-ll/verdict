@@ -394,7 +394,8 @@ async function createContest(deps: ContestDeps, session: ContestSession): Promis
   if (maxRejudgeText === undefined) {
     return;
   }
-  const contestantText = (await askInput('选手 id（逗号分隔，可留空）', '')) ?? '';
+  const contestantText =
+    (await askInput('选手 id（逗号分隔；留空也行——players/ 下的目录会自动识别）', '')) ?? '';
 
   const contestants = contestantText
     .split(',')
@@ -413,6 +414,8 @@ async function createContest(deps: ContestDeps, session: ContestSession): Promis
     rootDir: root,
     verdictDir: path.join(root, VERDICT_DIR),
     problemDirs: new Map(),
+    // 新比赛还没有选手目录，自动发现要到第一次 loadContest 时才算得出来。
+    autoContestants: [],
   });
   await fs.promises.mkdir(path.join(root, VERDICT_DIR, PROBLEMS_DIR), { recursive: true });
 

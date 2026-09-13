@@ -25,9 +25,11 @@ import {
 import type { JudgeOutcome } from '../engineFacade';
 import type { CaseDocumentStore } from './caseDocs';
 import type { VerdictCommands } from './commands';
+import { CONTEST_FILE, VERDICT_DIR } from '../core/contest/contest';
 import type { ContestSession } from './contest';
 import { debugFailureText, startDebug } from './debug';
 import type { VerdictOutput } from './output';
+import { workspaceRoot } from './workspace';
 import { createNonce, panelHtml } from './panel/html';
 import { collectPanelState, type PanelStandings, type PanelState } from './panel/state';
 
@@ -127,13 +129,30 @@ export class VerdictControlPanel implements vscode.WebviewViewProvider, vscode.D
 
   /** 不管面板开没开都重算一遍（面板消息、集成测试走这里）。 */
   private async recompute(): Promise<void> {
-    // 强制重读比赛：contest.json、submissions.json 都可能在编辑器外面被改。
-    await this.deps.contest.load(true);
-    const state = await collectPanelState(
-      { caseDocs: this.deps.caseDocs, standings: () => this.standingsState() },
-      this.selectedProblemId,
-      { busy: this.busy, notice: this.notice },
-    );
+    let state: PanelState;
+    try {
+      // 强制重读比赛：contest.json、submissions.json 都可能在编辑器外面被改。
+      await this.deps.contest.load(true);
+      state = await collectPanelState(
+        { caseDocs: this.deps.caseDocs, standings: () => this.standingsState() },
+        this.selectedProblemId,
+        { busy: this.busy, notice: this.notice },
+      );
+    } catch (err) {
+      // 采集失败也必须发一份数据过去：以前这里是直接抛，面板收不到任何东西，
+      // 就永远停在「正在读取评测配置…」——用户看到的就是「侧边栏一片空白」。
+      const text = firstLine(err);
+      this.deps.output.error(`面板刷新失败：${text}`);
+      state = {
+        contest: null,
+        problems: [],
+        selected: null,
+        source: null,
+        standings: null,
+        busy: this.busy,
+        notice: { level: 'error', text },
+      };
+    }
     this.lastState = state;
     if (state.selected !== null) {
       this.selectedProblemId = state.selected.id;
@@ -197,7 +216,8 @@ export class VerdictControlPanel implements vscode.WebviewViewProvider, vscode.D
   }
 
   private send(message: unknown): void {
-    void this.view?.webview.postMessage(message);
+    // webview 可能刚被关掉，postMessage 会 reject——吞掉即可，下一次刷新会补上。
+    void this.view?.webview.postMessage(message).then(undefined, () => undefined);
   }
 
   private setBusy(text: string | null): void {
@@ -250,6 +270,9 @@ export class VerdictControlPanel implements vscode.WebviewViewProvider, vscode.D
           return;
         case 'openProblemJson':
           await this.openProblemJson();
+          return;
+        case 'openContestJson':
+          await this.openContestJson();
           return;
         case 'setLimits':
           await this.setLimits(asLimits(message.limits));
@@ -432,6 +455,19 @@ export class VerdictControlPanel implements vscode.WebviewViewProvider, vscode.D
   private async openDataDir(): Promise<void> {
     const root = this.requireRoot();
     await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(path.join(root, 'data')));
+  }
+
+  /** 比赛配置读不出来时，给用户一条直达 contest.json 的路。 */
+  private async openContestJson(): Promise<void> {
+    const root = workspaceRoot();
+    if (root === undefined) {
+      this.notify('warn', '这个窗口没有打开文件夹。');
+      return;
+    }
+    await vscode.window.showTextDocument(
+      vscode.Uri.file(path.join(root, VERDICT_DIR, CONTEST_FILE)),
+      { preview: false },
+    );
   }
 
   private async openProblemJson(): Promise<void> {

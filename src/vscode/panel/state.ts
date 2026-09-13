@@ -98,8 +98,11 @@ export interface PanelState {
     id: string;
     title: string;
     maxRejudge: number;
-    contestants: { id: string; name: string }[];
+    /** auto：从 players/ 自动发现（没写进 contest.json）。 */
+    contestants: { id: string; name: string; auto: boolean }[];
     problemIds: string[];
+    /** 读 contest.json 失败的原因；有它时上面几项只是占位。 */
+    error: string | null;
   } | null;
   problems: PanelProblemSummary[];
   selected: PanelProblemDetail | null;
@@ -157,8 +160,12 @@ export async function collectPanelState(
   }
 
   const selectedId = await pickSelection(selectedProblemId, problems, roots);
+  // 单个题目包读不出来（比如正在手改 problem.json）不该让整个面板空白：
+  // 详情退化成 null，题目列表与「读不出来」的提示照常显示。
   const selected =
-    selectedId === null ? null : await detail(selectedId, problems, deps.caseDocs);
+    selectedId === null
+      ? null
+      : await detail(selectedId, problems, deps.caseDocs).catch(() => null);
 
   return {
     contest,
@@ -181,6 +188,7 @@ async function loadContestSummary(root: string | undefined): Promise<PanelState[
   }
   try {
     const pkg = await loadContest(contestRoot);
+    const auto = new Set(pkg.autoContestants);
     return {
       id: pkg.contest.id,
       title: pkg.contest.title,
@@ -188,13 +196,22 @@ async function loadContestSummary(root: string | undefined): Promise<PanelState[
       contestants: pkg.contest.contestants.map((item) => ({
         id: item.id,
         name: item.name,
+        auto: auto.has(item.id),
       })),
       problemIds: pkg.contest.problems.map((item) => item.id),
+      error: null,
     };
-  } catch {
-    // contest.json 写坏了不该让整个面板打不开：题目照常显示，比赛那一栏空着，
-    // 用户还是能改题目。
-    return null;
+  } catch (err) {
+    // 读不出来时把原因带到面板上。以前这里静默返回 null，面板看起来就是「没有比赛」，
+    // 用户根本不知道是 contest.json 有问题——这正是「创建比赛后一直不显示」的现场。
+    return {
+      id: contestRoot,
+      title: 'contest.json 读不出来',
+      maxRejudge: 0,
+      contestants: [],
+      problemIds: [],
+      error: firstLine(err),
+    };
   }
 }
 

@@ -80,6 +80,17 @@ body {
 .status.error { color: var(--vscode-errorForeground, #f48771); }
 .status.warn { color: var(--vscode-editorWarning-foreground, #cca700); }
 
+.banner {
+  border: 1px solid var(--vscode-editorError-foreground, #f14c4c);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  color: var(--vscode-errorForeground, #f48771);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.banner .row { margin-top: 6px; }
+
 button.btn {
   font-family: inherit;
   font-size: 11px;
@@ -516,8 +527,14 @@ const SCRIPT = `
       line.appendChild(el('span', null, state.contest.title));
       line.appendChild(el('span', 'mono', state.contest.id));
       contestCard.appendChild(line);
+      var autoCount = state.contest.contestants.filter(function (item) { return item.auto; }).length;
       contestCard.appendChild(el('div', 'hint',
-        state.contest.contestants.length + ' 名选手 · 重测上限 ' + state.contest.maxRejudge + ' 次'));
+        state.contest.contestants.length + ' 名选手' +
+        (autoCount > 0 ? '（其中 ' + autoCount + ' 名来自 players/ 自动发现）' : '') +
+        ' · 重测上限 ' + state.contest.maxRejudge + ' 次'));
+      if (state.contest.error) {
+        contestCard.appendChild(el('div', 'hint', 'contest.json 读不出来：' + state.contest.error));
+      }
     } else {
       contestCard.appendChild(el('div', 'hint', '还没有比赛：新建一个才能评测全部与出榜。'));
       var contestRow = el('div', 'row');
@@ -743,7 +760,10 @@ const SCRIPT = `
     var box = el('div');
     var problem = state.selected;
     if (!problem) {
-      box.appendChild(el('p', 'hint', '先在「题目」里选一道题（或新建一道）。'));
+      var brokenProblem = state.problems.filter(function (item) { return item.broken; })[0];
+      box.appendChild(el('p', 'hint', brokenProblem
+        ? '题目包读不出来：' + brokenProblem.broken
+        : '先在「题目」里选一道题（或新建一道）。'));
       return box;
     }
 
@@ -836,6 +856,11 @@ const SCRIPT = `
       box.appendChild(el('p', 'hint', '比赛配置读不出来，先把 contest.json 与题目包修好。'));
       return box;
     }
+    var autoPlayers = state.contest.contestants.filter(function (item) { return item.auto; }).length;
+    if (autoPlayers > 0) {
+      box.appendChild(el('p', 'hint',
+        '其中 ' + autoPlayers + ' 名选手是从 players/ 自动发现的（放进去就算，不用改 contest.json）。'));
+    }
     if (standings.ranks.length === 0) {
       box.appendChild(el('p', 'hint', '这场比赛还没有选手。'));
       return box;
@@ -915,12 +940,35 @@ const SCRIPT = `
     return box;
   }
 
+  /** 出错了就把话说在明处：以前只在底部那行小字里，面板一旦没数据就是「一片空白」。 */
+  function renderBanner() {
+    var text = state.contest && state.contest.error
+      ? '比赛配置读不出来：' + state.contest.error
+      : (notice && notice.level === 'error' ? notice.text : '');
+    if (!text) { return null; }
+    var box = el('div', 'banner');
+    box.appendChild(el('div', null, text));
+    var row = el('div', 'row');
+    row.appendChild(button('重新读取', '再读一遍工作区里的配置', function () {
+      post({ type: 'refresh' });
+    }));
+    if (state.contest && state.contest.error) {
+      row.appendChild(button('打开 contest.json', null, function () {
+        post({ type: 'openContestJson' });
+      }));
+    }
+    box.appendChild(row);
+    return box;
+  }
+
   function render() {
     clear(root);
     if (!state) { return; }
     root.appendChild(renderTop());
     root.appendChild(renderTabs());
     var body = el('div', 'body');
+    var banner = renderBanner();
+    if (banner) { body.appendChild(banner); }
     if (tab === 'problems') { body.appendChild(renderProblemsTab()); }
     else if (tab === 'tests') { body.appendChild(renderTestsTab()); }
     else { body.appendChild(renderStandingsTab()); }

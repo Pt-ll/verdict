@@ -164,10 +164,11 @@ function sampleState(): PanelState {
       title: '演示赛',
       maxRejudge: 1,
       contestants: [
-        { id: 'alice', name: 'Alice' },
-        { id: 'bob', name: 'Bob' },
+        { id: 'alice', name: 'Alice', auto: false },
+        { id: 'bob', name: 'Bob', auto: true },
       ],
       problemIds: ['A'],
+      error: null,
     },
     problems: [
       {

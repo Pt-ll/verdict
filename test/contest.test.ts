@@ -88,9 +88,9 @@ describe('loadContest', () => {
       (err: unknown) => (err instanceof Error ? err.message : String(err)),
     );
 
-    expect(message).toContain('4 处问题');
+    // problems 为空不再算错：刚建出来的比赛就是空的（先建比赛、再加题）。
+    expect(message).toContain('3 处问题');
     expect(message).toContain('maxRejudge 必须是非负数');
-    expect(message).toContain('problems 至少要写一道题');
     expect(message).toContain('缺少 folder');
     expect(message).toContain('选手 id "alice" 重复了');
   });
@@ -159,6 +159,79 @@ describe('saveContest', () => {
     expect(reloaded.contest._raw?.version).toBe(1);
     // 写回的是 id 列表，不是展开后的题目对象。
     expect(reloaded.contest._raw?.problems).toEqual(['A', 'B']);
+  });
+});
+
+describe('players/ 自动识别选手', () => {
+  it('problems 与 contestants 都能不写：刚建出来的比赛也读得出来', async () => {
+    const root = makeWorkspace({
+      [path.join(VERDICT_DIR, CONTEST_FILE)]: contestJson({
+        id: 'fresh',
+        title: '刚建出来的比赛',
+        maxRejudge: 3,
+        problems: [],
+      }),
+    });
+
+    const pkg = await loadContest(root);
+
+    expect(pkg.contest.id).toBe('fresh');
+    expect(pkg.contest.problems).toEqual([]);
+    expect(pkg.contest.contestants).toEqual([]);
+    expect(pkg.autoContestants).toEqual([]);
+  });
+
+  it('players/ 下含源码的目录自动成为选手，空目录与普通文件都不算', async () => {
+    const root = makeWorkspace({
+      [path.join(VERDICT_DIR, CONTEST_FILE)]: contestJson({ id: 'demo', problems: [] }),
+      'players/10/A.cpp': 'int main() { return 0; }\n',
+      'players/2/A.cpp': 'int main() { return 0; }\n',
+      'players/empty/.keep': '',
+      'players/notes.txt': '不是目录\n',
+    });
+
+    const pkg = await loadContest(root);
+
+    // 数字感知排序：2 排在 10 前面。
+    expect(pkg.contest.contestants.map((item) => item.id)).toEqual(['2', '10']);
+    expect(pkg.contest.contestants[0]?.folder).toBe('players/2');
+    expect(pkg.autoContestants).toEqual(['2', '10']);
+  });
+
+  it('contest.json 里写过的选手优先，自动发现只补缺的那几个', async () => {
+    const root = makeWorkspace({
+      [path.join(VERDICT_DIR, CONTEST_FILE)]: contestJson({
+        id: 'demo',
+        problems: [],
+        contestants: [{ id: 'alice', name: 'Alice', folder: 'players/alice' }],
+      }),
+      'players/alice/A.cpp': 'int main() { return 0; }\n',
+      'players/bob/A.cpp': 'int main() { return 0; }\n',
+    });
+
+    const pkg = await loadContest(root);
+
+    expect(pkg.contest.contestants.map((item) => item.id)).toEqual(['alice', 'bob']);
+    expect(pkg.contest.contestants[0]?.name).toBe('Alice');
+    expect(pkg.autoContestants).toEqual(['bob']);
+  });
+
+  it('自动发现的选手不会被写回 contest.json，但下次读还能看见', async () => {
+    const root = makeWorkspace({
+      [path.join(VERDICT_DIR, CONTEST_FILE)]: contestJson({ id: 'demo', problems: [] }),
+      'players/carol/A.cpp': 'int main() { return 0; }\n',
+    });
+
+    const pkg = await loadContest(root);
+    await saveContest(pkg);
+
+    const written = JSON.parse(fs.readFileSync(contestPath(root), 'utf8')) as {
+      contestants: unknown[];
+    };
+    expect(written.contestants).toEqual([]);
+
+    const again = await loadContest(root);
+    expect(again.contest.contestants.map((item) => item.id)).toEqual(['carol']);
   });
 });
 

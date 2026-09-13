@@ -753,6 +753,10 @@ export function splitmix64(seed: bigint): Rng;
 }
 ```
 
+`problems` 可以是空数组——刚建出来的比赛就是这样（先建比赛、再加题）；`contestants` 也可以不写：
+`players/` 下每个**含源码的子目录**会被自动当成一名选手（id 与显示名取目录名，按数字感知排序）。
+显式写过的以显式配置为准；自动发现的选手不会被写回文件。
+
 ### 6.3 `problem.json`
 
 ```jsonc

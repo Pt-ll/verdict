@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Contest, Contestant, Problem } from '../model';
 import { loadProblem } from '../problem/package';
+import { SOURCE_EXTENSIONS } from './sources';
 import { isFile } from '../../util/files';
 import { isInside, toPosixRelative } from '../../util/paths';
 import {
@@ -18,6 +19,8 @@ import {
 export const VERDICT_DIR = '.verdict';
 export const CONTEST_FILE = 'contest.json';
 export const PROBLEMS_DIR = 'problems';
+/** 选手源码目录：里面每个含源码的子目录都会被自动当成一名选手（见 scanPlayerFolders）。 */
+export const PLAYERS_DIR = 'players';
 export const CONTEST_JSON_VERSION = 1;
 
 export interface ContestPackage {
@@ -28,6 +31,13 @@ export interface ContestPackage {
   verdictDir: string;
   /** 题目 id -> 题目包根目录（.verdict/problems/<id>）。 */
   problemDirs: Map<string, string>;
+  /**
+   * 由 players/ 自动发现、没有写进 contest.json 的选手 id。
+   *
+   * 记着它只是为了让 saveContest 不把它们写回文件：自动发现是「读的时候顺手算出来」的，
+   * 不该因为改了一道题就把它们变成用户配置的一部分。
+   */
+  autoContestants: string[];
 }
 
 export function contestPath(rootDir: string): string {
@@ -82,34 +92,53 @@ export async function loadContest(rootDir: string): Promise<ContestPackage> {
     issues.add(`maxRejudge 必须是整数，现在是 ${describe(raw.maxRejudge)}`);
   }
 
+  // problems 允许为空：刚建出来的比赛就是这样（先建比赛、再加题）。以前这里当成配置错误，
+  // 后果是「新建比赛之后整条比赛链路都打不开」——面板空白，新建题目也加不进比赛。
   const problemIds = readStringArray(raw.problems, 'problems', issues);
-  if (problemIds.length === 0) {
-    issues.add('problems 至少要写一道题（写题目 id，题目包放在 .verdict/problems/<id>/）');
-  }
-  const contestants = readContestants(raw.contestants, issues);
+  const configured = readContestants(raw.contestants, issues);
   const { problems, problemDirs } = await loadProblems(resolved, problemIds, issues);
+
+  // players/ 下的目录自动算选手：程序放进去就能出现在榜单与整场评测里，不必手写 contestants。
+  // contest.json 里显式写过的以它为准（可以自定义显示名与目录）。
+  const known = new Set(configured.map((item) => item.id));
+  const discovered = (await scanPlayerFolders(resolved)).filter((item) => !known.has(item.id));
 
   issues.throwIfAny(file);
 
   return {
-    contest: { id, title, problems, contestants, maxRejudge, _raw: raw },
+    contest: {
+      id,
+      title,
+      problems,
+      contestants: [...configured, ...discovered],
+      maxRejudge,
+      _raw: raw,
+    },
     rootDir: resolved,
     verdictDir,
     problemDirs,
+    autoContestants: discovered.map((item) => item.id),
   };
 }
 
 /** 只写 contest.json：题目包、数据与选手源码都不归这个函数管（SPEC §5.8 的同一条规矩）。 */
 export async function saveContest(pkg: ContestPackage): Promise<void> {
   const file = contestPath(pkg.rootDir);
-  const text = `${JSON.stringify(serializeContest(pkg.contest), null, 2)}\n`;
+  // 自动发现的选手不写回文件：它们随时能从 players/ 重新算出来，
+  // 写进去只会让「改了一道题」顺带变成一次选手列表的改动。
+  const auto = new Set(pkg.autoContestants);
+  const contest = {
+    ...pkg.contest,
+    contestants: pkg.contest.contestants.filter((item) => !auto.has(item.id)),
+  };
+  const text = `${JSON.stringify(serializeContest(contest), null, 2)}\n`;
   await fs.promises.mkdir(path.dirname(file), { recursive: true });
   await fs.promises.writeFile(file, text, 'utf8');
 }
 
 function readContestants(raw: unknown, issues: ConfigIssues): Contestant[] {
   if (raw === undefined) {
-    issues.add('contestants 是必填的（选手列表）');
+    // 不写也合法：players/ 下的目录会被自动当成选手（见 scanPlayerFolders）。
     return [];
   }
   if (!Array.isArray(raw)) {
@@ -181,6 +210,69 @@ async function loadProblems(
     }
   }
   return { problems, problemDirs };
+}
+
+/**
+ * 扫 players/ 下的一级目录，把「里面有源码的目录」当作选手。
+ *
+ * 这是「我只把程序放进 players/」这条要求的落点：不必去写 contest.json 的 contestants。
+ * id 与显示名都取目录名，顺序按数字感知排序（1、2、10），与显式配置的选手合起来用。
+ */
+export async function scanPlayerFolders(rootDir: string): Promise<Contestant[]> {
+  const dir = path.join(rootDir, PLAYERS_DIR);
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch {
+    // 没有 players/ 目录不是错误，就是不打算用这条约定。
+    return [];
+  }
+
+  const found: Contestant[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) {
+      continue;
+    }
+    // 空目录不算选手：建了个文件夹但还没放程序，不该在榜单上凭空多出一行。
+    if (!(await hasSourceFile(path.join(dir, entry.name), 0))) {
+      continue;
+    }
+    found.push({
+      id: entry.name,
+      name: entry.name,
+      folder: toPosixRelative(path.join(PLAYERS_DIR, entry.name)),
+    });
+  }
+  return found.sort((left, right) => left.id.localeCompare(right.id, 'en', { numeric: true }));
+}
+
+/** 目录里（递归，最多 3 层）有没有源码文件。 */
+async function hasSourceFile(dir: string, depth: number): Promise<boolean> {
+  if (depth > 3) {
+    return false;
+  }
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) {
+      continue;
+    }
+    const target = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (await hasSourceFile(target, depth + 1)) {
+        return true;
+      }
+      continue;
+    }
+    if (entry.isFile() && SOURCE_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function serializeContest(contest: Contest): Record<string, unknown> {

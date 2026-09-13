@@ -15,7 +15,8 @@ const PREFERRED_SOURCES = [
   'main.py',
 ];
 
-const SOURCE_EXTENSIONS = ['.cpp', '.cc', '.cxx', '.c', '.py'];
+/** 算作「选手源码」的后缀。扫 players/ 判断一个目录算不算选手时也用同一份清单。 */
+export const SOURCE_EXTENSIONS = ['.cpp', '.cc', '.cxx', '.c', '.py'];
 
 /**
  * 找某个选手某道题的源码。

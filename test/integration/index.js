@@ -84,6 +84,7 @@ async function run() {
   await checkDiff();
   await checkProblemPackage(api, folder.uri);
   await checkControlPanel(api, folder.uri);
+  await checkAutoPlayers(api, folder.uri);
   await checkDebug(api, folder.uri);
   await checkContest(api);
 
@@ -245,6 +246,33 @@ async function checkControlPanel(api, root) {
   }
   assert.equal(fs.readFileSync(file, 'utf8'), original, '样例数据要逐字节还原');
   console.log('[verdict] 侧边栏面板：编辑直接落盘到 problem.json，样例数据已还原');
+}
+
+/**
+ * players/ 自动识别选手（0.1.2）。
+ *
+ * 用户的要求就是这一条：只把程序放进 players/，不用改 contest.json。
+ * 这里临时建一个选手目录，断言它出现在面板名单里且标着 auto，跑完删掉。
+ */
+async function checkAutoPlayers(api, root) {
+  const dir = path.join(root.fsPath, 'players', 'zz-auto');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(path.join(root.fsPath, 'players', 'alice', 'A.cpp'), path.join(dir, 'A.cpp'));
+  try {
+    await api.dispatchPanel({ type: 'refresh' });
+    const state = api.panelState();
+    assert.ok(state && state.contest, '面板应当读到比赛');
+    const auto = state.contest.contestants.filter((item) => item.auto).map((item) => item.id);
+    assert.deepEqual(
+      auto,
+      ['zz-auto'],
+      `players/ 下的新目录应当被自动当成选手，实际：${auto.join('、') || '（没有）'}`,
+    );
+    console.log('[verdict] 侧边栏面板：players/ 下的新目录被自动识别成选手');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    await api.dispatchPanel({ type: 'refresh' });
+  }
 }
 
 async function openSource(root, relative) {
