@@ -4,7 +4,7 @@
 
 **完全离线 · 零运行时依赖 · Windows / macOS / Linux 一致。**
 
-更新日志见 [CHANGELOG.md](CHANGELOG.md)（最新 0.1.0：侧边栏评测面板）。
+更新日志见 [CHANGELOG.md](CHANGELOG.md)（0.1.1 修 VSIX 的市场格式，0.1.0 是侧边栏评测面板）。
 
 ## 它能做什么
 
@@ -51,8 +51,8 @@ Open VSX 上现为 0.0.1；**VS Code 官方市场还没发布**（卡在微软 A
 本仓库内打包与安装：
 
 ```bash
-pnpm package                                                    # 生成 dist/verdict-0.1.0.vsix
-code --install-extension dist/verdict-0.1.0.vsix                # 安装
+pnpm package                                                    # 生成 dist/verdict-0.1.1.vsix
+code --install-extension dist/verdict-0.1.1.vsix                # 安装
 ```
 
 > macOS 上如果提示 `command not found: code`：VS Code 里按 `Cmd+Shift+P`，执行

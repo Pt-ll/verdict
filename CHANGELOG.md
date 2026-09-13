@@ -1,5 +1,17 @@
 # 更新日志
 
+## 0.1.1 — 2026-09-13
+
+**打包修复**：自带打包器产出的 VSIX 不符合市场后端的格式，上传时报 `TF400898`
+（一个不说明原因的内部错误）。0.1.0 的功能没有变，这一版只是把包修对。
+
+- `[Content_Types].xml` 按包内实际文件生成：后缀带点、没有后缀的 part 用 `<Override>`
+  单独声明。之前那条 `Extension=""` 是非法清单，后端建内容类型表时直接崩。
+- 清单补齐市场要的资产与属性：`Content.Details`（README）、`Content.Changelog`、
+  `Content.License`、`Icons.Default`，以及 `<Icon>`、仓库链接、Branding、Pricing。
+- 包内 README / CHANGELOG / LICENSE 改用市场约定的小写名（`readme.md` / `changelog.md` /
+  `LICENSE.txt`），与官方 vsce 的产物一致。
+
 ## 0.1.0 — 2026-09-13
 
 **侧边栏评测面板**：活动栏上的 Verdict 图标点开就是操作台，出题、评测、看榜都不用碰 JSON。
@@ -15,9 +27,6 @@
   文件在编辑器外面被改（手改、git 切分支）时面板跟着刷新。
 - 单点运行的分数是**下界**：结果标记为 `partial`，面板此时不显示总分，也不会清掉其它测试点的输出。
 - 面板里没有网络请求，DOM 全部用 `createElement` / `textContent` 构建（有单测盯着）。
-- **打包**：自带打包器产出的 VSIX 之前不符合市场后端的格式（上传时报 TF400898），现已修正——
-  `[Content_Types].xml` 按包内实际文件生成、清单补齐详情 / 更新日志 / 许可证 / 图标资产，
-  包内 README 与 CHANGELOG 改用市场约定的小写名。
 
 ## 0.0.1 — 2026-09-13（首个发布版本）
 
