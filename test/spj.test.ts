@@ -155,7 +155,8 @@ const PROTOCOL_CHECKER = [
   '  const std::string output = slurp(argv[2]);',
   '  const std::string answer = slurp(argv[3]);',
   '  if (output.find("PE") != std::string::npos) { std::fprintf(stderr, "格式不对\\n"); return 2; }',
-  '  if (output == answer) { return 0; }',
+  '  // 按 token 比较而不是按字节：Windows 上 printf 会把 \\n 写成 \\r\\n，',
+  '  // 按字节比会把一份完全正确的输出判成 WA（真实的 testlib checker 也是读 token 的）。',
   '  int same = 0;',
   '  int total = 0;',
   '  std::istringstream got(output);',
@@ -169,7 +170,8 @@ const PROTOCOL_CHECKER = [
   '    total += 1;',
   '    if (hasLeft && hasRight && left == right) same += 1;',
   '  }',
-  '  if (total > 0 && same > 0 && same < total) {',
+  '  if (total > 0 && same == total) { return 0; }',
+  '  if (total > 0 && same > 0) {',
   '    std::printf("%d\\n", (same * 100) / total);',
   '    std::fprintf(stderr, "%d/%d 个数字对\\n", same, total);',
   '    return 7;',
@@ -285,6 +287,22 @@ describe('SPJ 端到端（真编译）', () => {
     expect(outcome.cases[0]?.message).toContain('checker 编译失败');
     expect(outcome.maxScore).toBe(100);
     expect(outcome.score).toBe(0);
+  });
+
+  it('checker 不受行尾风格影响（模拟 Windows 的 \\r\\n）', async () => {
+    if (!available) {
+      return;
+    }
+    const root = makeSpjProblem();
+
+    // Windows 上 printf 的 "\n" 会变成 "\r\n"；这里显式打印同样的字节，
+    // 于是在任何平台上都能复现那次「Windows 上把正确输出判成 WA」的失败条件。
+    const outcome = await judgeWith(root, program('  std::printf("1 2 3\\r\\n");'));
+
+    if (outcome.kind !== 'judged') {
+      throw new Error('应当是 judged');
+    }
+    expect(outcome.cases[0]?.verdict).toBe('AC');
   });
 
   it('缺 testlib.h 时给出提示，放进 extra/ 后就能编过', async () => {

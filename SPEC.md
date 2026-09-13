@@ -523,6 +523,10 @@ interactor 用与 checker 相同的退出码协议（0/1/2/3/7），判定优先
 交互题的部分分写在 **stderr** 上（它的 stdout 是对话通道，写分数会把协议弄脏），所以
 退出码 7 的分数在 stdout 与 stderr 两处都会去认。
 
+写 checker 时的一条硬提醒：**不要按字节比较输出**。Windows 上程序写出的 `\n` 会变成 `\r\n`，
+按字节比会把一份完全正确的输出判成 WA（我们的 default 比较器忽略行尾空白与 CR，正是同一个原因）。
+按 token 或用 `InStream::readWord` 这类读法，跨平台才成立。
+
 ### 5.7 Contest（比赛/选手/重测/统计）
 
 ```ts
