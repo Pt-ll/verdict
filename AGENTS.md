@@ -75,7 +75,6 @@ Windows runner 上一次成功的 MSVC 编译加链接就能吃掉 5s 以上（2
 - M2 题目包 + 测试点 + 子任务 + Testing/diff ✅（三平台 CI 全绿）
 - M3 比赛 + 选手 + 重测 + 榜单 + HTML ✅（三平台 CI 全绿）
 - M4 交互题 + testlib SPJ + 导入导出 + 打包 ← 当前（交付完成，本机验收全过；三平台 CI 待确认）
-- M4 交互题 + testlib SPJ + 导入导出 + 打包
 
 ## 代码风格
 

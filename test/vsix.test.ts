@@ -114,3 +114,40 @@ describe('manifestXml', () => {
     expect(xml).toContain('Publisher="p&quot;q"');
   });
 });
+
+// 发布前 vsce 会核对这些东西，缺一样就报错或页面难看。本地先钉住，省得在发布那一刻才发现。
+describe('发布前置条件', () => {
+  const root = path.join(__dirname, '..');
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(root, 'package.json'), 'utf8'),
+  ) as {
+    name: string;
+    publisher: string;
+    version: string;
+    engines: { vscode: string };
+    icon: string;
+    license: string;
+    repository: { url: string };
+  };
+
+  it('publisher / name / version / engines.vscode 都在，且格式合规', () => {
+    expect(manifest.publisher).toMatch(/^[A-Za-z0-9][A-Za-z0-9-]*$/);
+    expect(manifest.name).toMatch(/^[a-z0-9-]+$/);
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(manifest.engines.vscode).toMatch(/^\^?\d+\.\d+\.\d+$/);
+  });
+
+  it('repository 写了（vsce 的硬要求），license 与 LICENSE 文件对得上', () => {
+    expect(manifest.repository.url).toContain('github.com');
+    expect(manifest.license).toBe('MIT');
+    expect(fs.existsSync(path.join(root, 'LICENSE'))).toBe(true);
+  });
+
+  it('图标是 128×128，README 也在（市场页面的门面）', () => {
+    const icon = fs.readFileSync(path.join(root, manifest.icon));
+
+    expect(icon.readUInt32BE(16)).toBe(128);
+    expect(icon.readUInt32BE(20)).toBe(128);
+    expect(fs.existsSync(path.join(root, 'README.md'))).toBe(true);
+  });
+});

@@ -55,7 +55,8 @@ vsce login YuChenZhong        # 粘上一步的 PAT（若报 Publisher not found
 
 ### 4. 打包并发布
 
-两种方式任选：
+两种方式任选（两条路的产物都是精简的：我们自己的打包器走白名单，
+`.vscodeignore` 则保证 `vsce` 自己打包时不会把源码、测试、样例数据一起塞进去）：
 
 ```bash
 # 方式一：用本仓库自带的打包器产出 VSIX，再交给 vsce 上传
