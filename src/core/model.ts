@@ -148,3 +148,103 @@ export interface ProblemResult {
   subtasks: SubtaskResult[];
   elapsedMs: number;
 }
+
+export interface Contestant {
+  id: string;
+  name: string;
+  /** 选手目录，相对工作区根目录，例如 "players/alice"。 */
+  folder: string;
+}
+
+export interface Contest {
+  id: string;
+  title: string;
+  /** contest.json 里只写题目 id，这里放展开后的题目包（SPEC §5.1）。 */
+  problems: Problem[];
+  contestants: Contestant[];
+  /** 允许的重测次数上限，超过就不许再重测（SPEC §5.7）。 */
+  maxRejudge: number;
+  /** 原始 contest.json 里的未知字段，写回时保留。 */
+  _raw?: Record<string, unknown>;
+}
+
+export interface Submission {
+  id: string;
+  contestant: string;
+  problem: string;
+  /** 选手源码的绝对路径。 */
+  source: string;
+  language: string;
+  result?: ProblemResult;
+  rejudgeCount: number;
+  /** ISO 时间戳。 */
+  time: string;
+}
+
+export interface StandingsCell {
+  contestant: string;
+  problem: string;
+  score: number;
+  /** 没提交过就是 null。 */
+  verdict: Verdict | null;
+}
+
+export interface Standings {
+  cells: StandingsCell[];
+  totals: { contestant: string; score: number }[];
+  /** rank 是并列名次（同分同名次，跳号：1、2、2、4）。 */
+  ranks: { contestant: string; rank: number; score: number }[];
+}
+
+export interface ContestStats {
+  /** 各选手总分，按分数降序。 */
+  scores: { contestant: string; score: number }[];
+  average: number;
+  highest: number;
+  lowest: number;
+  problems: {
+    problem: string;
+    /** 拿到满分的选手数。 */
+    accepted: number;
+    /** 有提交的选手数。 */
+    attempted: number;
+    averageScore: number;
+  }[];
+  /** 每个测试点的时间与内存，供散点图使用（SPEC §4.7）。 */
+  cases: {
+    contestant: string;
+    problem: string;
+    test: string;
+    timeMs: number;
+    memoryKb: number;
+    verdict: Verdict;
+  }[];
+}
+
+/**
+ * 判定严重程度：越靠前越严重。
+ *
+ * 用于「一组测试点的总体判定」这类汇总（榜单单元格、状态栏、HTML 报告），
+ * 只放一处，免得各处排序不一致、同一次评测在不同地方显示成不同的结论。
+ */
+export const VERDICT_PRIORITY: Verdict[] = [
+  'UKE',
+  'RE',
+  'MLE',
+  'OLE',
+  'TLE',
+  'WA',
+  'PC',
+  'CE',
+  'AC',
+];
+
+/** 取一组测试点里最严重的那一个判定；空数组返回 null。 */
+export function summarizeVerdict(cases: CaseResult[]): Verdict | null {
+  for (const verdict of VERDICT_PRIORITY) {
+    if (cases.some((item) => item.verdict === verdict)) {
+      return verdict;
+    }
+  }
+  return null;
+}

@@ -9,12 +9,8 @@ import {
   type Toolchain,
 } from '../core/compiler';
 import { runProcess } from '../util/process';
-import type {
-  CancellationTokenLike,
-  CaseResult,
-  SubtaskResult,
-  Verdict,
-} from '../core/model';
+import { summarizeVerdict } from '../core/model';
+import type { CancellationTokenLike, SubtaskResult } from '../core/model';
 import { loadProblem } from '../core/problem/package';
 import { debugFailureText, startDebug, type DebugResult } from './debug';
 import { readCompilerSetting, readEngineOptions } from './config';
@@ -357,7 +353,7 @@ class JudgeRunner {
 
         const total = outcome.cases.length;
         const accepted = outcome.cases.filter((item) => item.verdict === 'AC').length;
-        const worst = worstVerdict(outcome.cases);
+        const worst = summarizeVerdict(outcome.cases) ?? 'AC';
         // 有题目包才报分数：M1 的约定式数据每个点 1 分，「得分 1/1」只是噪音。
         const scoreText =
           outcome.problemId === undefined ? '' : `，得分 ${outcome.score}/${outcome.maxScore}`;
@@ -485,16 +481,6 @@ function subtaskStatusText(status: SubtaskResult['status']): string {
   }
 }
 
-const VERDICT_PRIORITY: Verdict[] = ['UKE', 'RE', 'MLE', 'OLE', 'TLE', 'WA', 'PC', 'CE', 'AC'];
-
-function worstVerdict(cases: CaseResult[]): Verdict {
-  for (const verdict of VERDICT_PRIORITY) {
-    if (cases.some((item) => item.verdict === verdict)) {
-      return verdict;
-    }
-  }
-  return 'AC';
-}
 
 interface SelfCheckResult {
   ok: boolean;

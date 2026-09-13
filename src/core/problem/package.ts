@@ -13,6 +13,17 @@ import {
 import { scanTests } from './scan';
 import { topoOrderSubtasks } from './subtasks';
 import { isFile } from '../../util/files';
+import { isInside } from '../../util/paths';
+import {
+  ConfigIssues,
+  describe,
+  isObject,
+  isNonNegativeNumber,
+  readJsonObject,
+  readNonNegative,
+  readString,
+  readStringArray,
+} from '../../util/json';
 
 export const PROBLEM_FILE = 'problem.json';
 export const PROBLEM_JSON_VERSION = 1;
@@ -32,10 +43,12 @@ export interface ProblemPackage {
 export async function loadProblem(rootDir: string): Promise<ProblemPackage> {
   const resolved = path.resolve(rootDir);
   const problemPath = path.join(resolved, PROBLEM_FILE);
-  const raw = await readProblemJson(problemPath);
+  const raw = await readJsonObject(problemPath, (target) =>
+    fs.promises.readFile(target, 'utf8'),
+  );
 
   const dataDir = path.join(resolved, 'data');
-  const issues = new ProblemIssues();
+  const issues = new ConfigIssues();
   const problem = await buildProblem(raw, { rootDir: resolved, dataDir, issues });
   issues.throwIfAny(problemPath);
 
@@ -94,36 +107,10 @@ export async function findProblemRoot(
   }
 }
 
-function isInside(target: string, root: string): boolean {
-  const rel = path.relative(root, target);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-/**
- * 收集 problem.json 的格式问题。
- *
- * 攒够了一次性抛：题目包是手写的，一次报一个错会让人来回改十遍。
- */
-class ProblemIssues {
-  private readonly messages: string[] = [];
-
-  add(message: string): void {
-    this.messages.push(message);
-  }
-
-  throwIfAny(problemPath: string): void {
-    if (this.messages.length === 0) {
-      return;
-    }
-    const detail = this.messages.map((message) => `  · ${message}`).join('\n');
-    throw new Error(`${problemPath} 有 ${this.messages.length} 处问题：\n${detail}`);
-  }
-}
-
 interface BuildContext {
   rootDir: string;
   dataDir: string;
-  issues: ProblemIssues;
+  issues: ConfigIssues;
 }
 
 async function buildProblem(raw: Record<string, unknown>, ctx: BuildContext): Promise<Problem> {
@@ -155,7 +142,7 @@ async function buildProblem(raw: Record<string, unknown>, ctx: BuildContext): Pr
   return problem;
 }
 
-function readType(raw: unknown, issues: ProblemIssues): ProblemType {
+function readType(raw: unknown, issues: ConfigIssues): ProblemType {
   if (raw === undefined) {
     return 'traditional';
   }
@@ -170,7 +157,7 @@ const LIMIT_KEYS = ['timeMs', 'memoryMb', 'stackMb', 'outputKb'] as const;
 
 const UNSUPPORTED_LIMIT_KEYS = ['procCount'];
 
-function readLimits(raw: unknown, issues: ProblemIssues): Limits {
+function readLimits(raw: unknown, issues: ConfigIssues): Limits {
   const limits: Limits = { ...DEFAULT_LIMITS };
   if (raw === undefined) {
     return limits;
@@ -218,7 +205,7 @@ const COMPARATOR_MODES: readonly ComparatorMode[] = [
   'interactive',
 ];
 
-function readComparator(raw: unknown, issues: ProblemIssues): ComparatorConfig {
+function readComparator(raw: unknown, issues: ConfigIssues): ComparatorConfig {
   if (raw === undefined) {
     return { mode: 'default' };
   }
@@ -257,7 +244,7 @@ function readComparator(raw: unknown, issues: ProblemIssues): ComparatorConfig {
   return comparator;
 }
 
-function readSubtasks(raw: unknown, issues: ProblemIssues): Subtask[] {
+function readSubtasks(raw: unknown, issues: ConfigIssues): Subtask[] {
   if (raw === undefined) {
     return [];
   }
@@ -395,7 +382,7 @@ function toPackageRelative(rootDir: string, absolute: string): string {
   return path.relative(rootDir, absolute).split(path.sep).join('/');
 }
 
-function validateProblem(problem: Problem, issues: ProblemIssues): void {
+function validateProblem(problem: Problem, issues: ConfigIssues): void {
   const testIds = new Set(problem.tests.map((test) => test.id));
   const subtaskById = new Map(problem.subtasks.map((subtask) => [subtask.id, subtask]));
 
@@ -461,95 +448,4 @@ function serializeProblem(problem: Problem): Record<string, unknown> {
     ...(problem.sourceDir === undefined ? {} : { sourceDir: problem.sourceDir }),
     ...(problem.answerDir === undefined ? {} : { answerDir: problem.answerDir }),
   };
-}
-
-async function readProblemJson(problemPath: string): Promise<Record<string, unknown>> {
-  let text: string;
-  try {
-    text = await fs.promises.readFile(problemPath, 'utf8');
-  } catch (err) {
-    throw new Error(`读不到题目包：${problemPath}（${describeError(err)}）`);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`${problemPath} 不是合法 JSON：${describeError(err)}`);
-  }
-  if (!isObject(parsed)) {
-    throw new Error(`${problemPath} 的顶层必须是一个对象`);
-  }
-  return parsed;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isNonNegativeNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
-}
-
-function readNonNegative(
-  value: unknown,
-  label: string,
-  issues: ProblemIssues,
-): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!isNonNegativeNumber(value)) {
-    issues.add(`${label} 必须是非负数，现在是 ${describe(value)}`);
-    return undefined;
-  }
-  return value;
-}
-
-function readStringArray(value: unknown, label: string, issues: ProblemIssues): string[] {
-  if (value === undefined) {
-    return [];
-  }
-  if (!Array.isArray(value)) {
-    issues.add(`${label} 必须是字符串数组，现在是 ${describe(value)}`);
-    return [];
-  }
-  const result: string[] = [];
-  for (const item of value) {
-    const text = readString(item);
-    if (text === undefined) {
-      issues.add(`${label} 里有不是字符串的项：${describe(item)}`);
-      continue;
-    }
-    result.push(text);
-  }
-  return result;
-}
-
-function describe(value: unknown): string {
-  if (value === undefined) {
-    return '未填写';
-  }
-  if (value === null) {
-    return 'null';
-  }
-  if (Array.isArray(value)) {
-    return '数组';
-  }
-  switch (typeof value) {
-    case 'object':
-      return '对象';
-    case 'string':
-      return `"${value}"`;
-    default:
-      return String(value);
-  }
-}
-
-function describeError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
