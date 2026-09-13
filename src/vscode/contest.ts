@@ -116,7 +116,13 @@ export class ContestSession {
     };
   }
 
-  /** 评测整场：选手 × 题目。每跑完一条就落盘，中途取消不丢已完成的。 */
+  /**
+   * 评测整场：选手 × 题目。每跑完一条就落盘，中途取消不丢已完成的。
+   *
+   * 注意副作用：整场评测会把每个格子的提交换成新记录，重测计数因此归零。
+   * 重测上限约束的是「针对单条提交的重测」，不是「整场重跑」——
+   * 后者是出题人主动重新判一遍，属于另一件事。
+   */
   async judgeAll(token?: vscode.CancellationToken): Promise<ContestSummary | null> {
     const pkg = await this.load();
     if (pkg === null) {
