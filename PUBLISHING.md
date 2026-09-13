@@ -25,17 +25,19 @@
 ### 1. 创建 publisher **[你来]**
 
 1. 用 Microsoft 账号登录 <https://marketplace.visualstudio.com/manage>
-2. 按页面引导创建 publisher：**ID 填 `yuchenzhong`**。
-   市场只允许小写字母、数字和连字符，空格放不进 ID；带空格的显示名（`Yuchen Zhong`）是
-   填在 publisher 资料页上的，不影响这里的 ID。
+2. 按页面引导创建 publisher：**ID 填 `YuChenZhong`**（与 `package.json` 里的 `publisher`
+   一致，本仓库已经写成这个）。扩展 ID 因此是 `YuChenZhong.verdict`。
 
-   **ID 必须与 `package.json` 里的 `publisher` 一致**——本仓库已经写成 `yuchenzhong`。
-   扩展 ID 因此是 `yuchenzhong.verdict`；发布前定下来最好，因为以后再改 ID，装过旧版本的人
-   会看到两个扩展（旧的不会自动消失）。
+   创建页对 ID 的大小写可能有自己的要求（有些年份的页面会强制小写）。真遇到那种提示，
+   就把三处一起改成市场接受的形式——`package.json` 的 `publisher`、本文档的示例命令、
+   `test/integration/index.js` 的 `EXTENSION_ID`。
 
-   想换成别的（比如与 GitHub 用户名一致的 `pt-ll`），要同时改三处：`package.json` 的
-   `publisher`、本文档里的示例命令，以及 `test/integration/index.js` 里的 `EXTENSION_ID`
-   （那条测试就是靠它找到扩展的，改漏了会直接红）。
+   **用户侧不受影响**，这点本仓库实测过：用带大写的清单装进 VS Code 后，
+   `code --list-extensions` 显示的是小写形式 `yuchenzhong.verdict`——VS Code 会把扩展 ID
+   归一成小写，查找也不区分大小写（集成测试用两种写法都能找到扩展）。所以 publisher 的
+   大小写只影响发布这一步，不影响已经装上的人。
+
+   发布前定下来最好：以后再改 ID，装过旧版本的人会看到两个扩展（旧的不会自动消失）。
 
 ### 2. 生成访问令牌（PAT） **[你来]**
 
@@ -47,7 +49,7 @@
 
 ```bash
 npm install -g @vscode/vsce
-vsce login yuchenzhong        # 粘上一步的 PAT
+vsce login YuChenZhong        # 粘上一步的 PAT（若报 Publisher not found，见上面的大小写说明）
 ```
 
 ### 4. 打包并发布
@@ -65,7 +67,7 @@ vsce publish
 ```
 
 发布成功后几分钟内会出现在
-<https://marketplace.visualstudio.com/items?itemName=yuchenzhong.verdict>。
+<https://marketplace.visualstudio.com/items?itemName=YuChenZhong.verdict>。
 
 ### 5. 以后每次更新
 
