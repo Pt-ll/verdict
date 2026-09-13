@@ -82,6 +82,14 @@
       {
         "command": "verdict.exportHtml",
         "title": "Verdict: 导出 HTML 成绩"
+      },
+      {
+        "command": "verdict.exportProblem",
+        "title": "Verdict: 导出题目包"
+      },
+      {
+        "command": "verdict.importProblem",
+        "title": "Verdict: 导入题目包"
       }
     ],
     "configuration": {

@@ -26,6 +26,8 @@ const COMMANDS = [
   'verdict.rejudge',
   'verdict.showStandings',
   'verdict.exportHtml',
+  'verdict.exportProblem',
+  'verdict.importProblem',
 ];
 
 /**

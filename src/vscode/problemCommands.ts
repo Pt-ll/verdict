@@ -1,5 +1,14 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import {
+  findContestRoot,
+  loadContest,
+  PROBLEMS_DIR,
+  saveContest,
+  VERDICT_DIR,
+} from '../core/contest/contest';
+import type { Problem } from '../core/model';
+import { exportProblemPackage, importProblemPackage } from '../core/problem/archive';
 import { clearSubtasks, evenSubtasks, planAddTests, withLimits } from '../core/problem/edit';
 import {
   loadProblem,
@@ -15,6 +24,8 @@ export const COMMAND_ADD_TESTS = 'verdict.addTests';
 export const COMMAND_CONFIGURE_SUBTASKS = 'verdict.configureSubtasks';
 export const COMMAND_SET_LIMITS = 'verdict.setLimits';
 export const COMMAND_SHOW_DIFF = 'verdict.showDiff';
+export const COMMAND_EXPORT_PROBLEM = 'verdict.exportProblem';
+export const COMMAND_IMPORT_PROBLEM = 'verdict.importProblem';
 
 export interface ProblemCommandDeps {
   output: VerdictOutput;
@@ -35,6 +46,8 @@ export function registerProblemCommands(deps: ProblemCommandDeps): vscode.Dispos
     vscode.commands.registerCommand(COMMAND_CONFIGURE_SUBTASKS, guard(deps, configureSubtasks)),
     vscode.commands.registerCommand(COMMAND_SET_LIMITS, guard(deps, setLimits)),
     vscode.commands.registerCommand(COMMAND_SHOW_DIFF, guard(deps, showDiff)),
+    vscode.commands.registerCommand(COMMAND_EXPORT_PROBLEM, guard(deps, exportProblem)),
+    vscode.commands.registerCommand(COMMAND_IMPORT_PROBLEM, guard(deps, importProblem)),
   ];
 }
 
@@ -285,4 +298,84 @@ async function afterChange(deps: ProblemCommandDeps, message: string): Promise<v
   await deps.refreshTests();
   deps.output.info(message);
   void vscode.window.showInformationMessage(`Verdict：${message}`);
+}
+
+/** 导出题目包：选一个 .zip 路径，把整个题目目录（含 extra/）打包。 */
+async function exportProblem(deps: ProblemCommandDeps): Promise<void> {
+  const pkg = await resolvePackage();
+  if (pkg === null) {
+    return;
+  }
+
+  const picked = await vscode.window.showSaveDialog({
+    title: 'Verdict：导出题目包',
+    defaultUri: vscode.Uri.file(path.join(path.dirname(pkg.rootDir), `${pkg.problem.id}.zip`)),
+    filters: { 题目包: ['zip'] },
+  });
+  if (picked === undefined) {
+    return;
+  }
+
+  const result = await exportProblemPackage(pkg, picked.fsPath);
+  deps.output.info(
+    `已导出题目包：${result.zipPath}（${String(result.entries)} 个文件，` +
+      `${(result.bytes / 1024).toFixed(1)}KB）`,
+  );
+  void vscode.window.showInformationMessage(
+    `Verdict：已导出「${pkg.problem.name}」（${String(result.entries)} 个文件）。`,
+  );
+}
+
+/** 导入题目包：解到工作区的 .verdict/problems/ 下，并加进比赛（如果有比赛）。 */
+async function importProblem(deps: ProblemCommandDeps): Promise<void> {
+  const picked = await vscode.window.showOpenDialog({
+    title: 'Verdict：选择题目包压缩文件',
+    canSelectMany: false,
+    filters: { 题目包: ['zip'] },
+  });
+  const archive = picked?.[0]?.fsPath;
+  if (archive === undefined) {
+    return;
+  }
+
+  const root = workspaceRoot();
+  // 有工作区就按 SPEC §6.1 的布局放；没有就解到压缩包旁边，别让人找不到它。
+  const destination =
+    root === undefined ? path.dirname(archive) : path.join(root, VERDICT_DIR, PROBLEMS_DIR);
+  const imported = await importProblemPackage(archive, destination);
+
+  await addToContestIfPresent(deps, root, imported.package.problem);
+  await deps.refreshTests();
+  deps.output.info(`已导入题目 ${imported.package.problem.id}：${imported.rootDir}`);
+  void vscode.window.showInformationMessage(
+    `Verdict：已导入题目「${imported.package.problem.name}」。`,
+  );
+}
+
+/**
+ * 新建 / 导入的题目顺手加进工作区的比赛。
+ *
+ * 在比赛工作区里加题，绝大多数情况就是「要拿它比赛」；不想要也可以从 contest.json 的
+ * problems 里删掉。这里直接读写文件而不经过 ContestSession——那个会话每次命令都会重读，
+ * 所以不会出现「刚加的题目没生效」。
+ */
+async function addToContestIfPresent(
+  deps: ProblemCommandDeps,
+  root: string | undefined,
+  problem: Problem,
+): Promise<void> {
+  if (root === undefined) {
+    return;
+  }
+  const contestRoot = await findContestRoot(root, root);
+  if (contestRoot === null) {
+    return;
+  }
+  const pkg = await loadContest(contestRoot);
+  if (pkg.contest.problems.some((item) => item.id === problem.id)) {
+    return;
+  }
+  pkg.contest.problems.push(problem);
+  await saveContest(pkg);
+  deps.output.info(`已把题目 ${problem.id} 加入比赛「${pkg.contest.title}」`);
 }
